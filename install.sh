@@ -17,8 +17,11 @@ echo "╚═══════════════════════�
 echo -e "${NC}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-HOST_JS="$SCRIPT_DIR/native-host/host.js"
-HOST_JSON="$SCRIPT_DIR/native-host/host.json"
+HOST_DIR="$SCRIPT_DIR/native-host"
+HOST_JS="$HOST_DIR/host.js"
+HOST_JSON="$HOST_DIR/host.json"
+EXTID_JS="$HOST_DIR/extid.js"
+VERIFY_JS="$HOST_DIR/verify.js"
 
 # ═══════════════════════════════════════════════════════════════════════
 # 1. 检测环境
@@ -60,28 +63,11 @@ echo "       操作系统: $OS"
 echo "       Google Chrome: 已检测到"
 
 # ═══════════════════════════════════════════════════════════════════════
-# 2. 计算扩展 ID（基于 manifest.json 中的 key）
+# 2. 计算扩展 ID
 # ═══════════════════════════════════════════════════════════════════════
 echo -e "${YELLOW}[2/4]${NC} 计算扩展 ID..."
 
-EXT_ID=$($NODE -e "
-const crypto = require('crypto');
-const fs = require('fs');
-const manifest = JSON.parse(fs.readFileSync('$SCRIPT_DIR/manifest.json', 'utf-8'));
-const keyB64 = manifest.key || '';
-let h;
-if (keyB64) {
-    h = crypto.createHash('sha256').update(Buffer.from(keyB64, 'base64')).digest();
-} else {
-    h = crypto.createHash('sha256').update('$SCRIPT_DIR'.toLowerCase()).digest();
-}
-const chars = [];
-for (let i = 0; i < 16; i++) {
-    chars.push(String.fromCharCode(97 + (h[i] >> 4)));
-    chars.push(String.fromCharCode(97 + (h[i] & 0x0f)));
-}
-process.stdout.write(chars.slice(0, 32).join(''));
-")
+EXT_ID=$($NODE "$EXTID_JS")
 echo "       ID: $EXT_ID"
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -89,7 +75,7 @@ echo "       ID: $EXT_ID"
 # ═══════════════════════════════════════════════════════════════════════
 echo -e "${YELLOW}[3/4]${NC} 安装 Native Host 清单..."
 
-chmod +x "$HOST_JS"
+chmod +x "$HOST_JS" "$EXTID_JS" "$VERIFY_JS"
 
 host_dir="$CHROME_CONFIG_DIR/NativeMessagingHosts"
 mkdir -p "$host_dir"
@@ -106,43 +92,9 @@ echo "       清单: $manifest_file ✓"
 echo ""
 echo -e "${YELLOW}[4/4]${NC} 验证 Native Host..."
 
-VERIFY_RESULT=$($NODE -e "
-const childProcess = require('child_process');
+VERIFY_RESULT=$($NODE "$VERIFY_JS" "$HOST_JS" 2>&1) || true
 
-const proc = childProcess.spawn('$HOST_JS', [], {
-    stdio: ['pipe', 'pipe', 'pipe']
-});
-
-const msg = JSON.stringify({action: 'test'});
-const lenBuf = Buffer.alloc(4);
-lenBuf.writeUInt32LE(Buffer.byteLength(msg, 'utf-8'), 0);
-
-proc.stdin.write(lenBuf);
-proc.stdin.write(msg);
-proc.stdin.end();
-
-const chunks = [];
-const errChunks = [];
-proc.stdout.on('data', (c) => chunks.push(c));
-proc.stderr.on('data', (c) => errChunks.push(c));
-
-proc.on('close', () => {
-    const stdout = Buffer.concat(chunks);
-    const stderr = Buffer.concat(errChunks).toString();
-    if (stdout.length >= 4) {
-        const respLen = stdout.slice(0, 4).readUInt32LE(0);
-        const resp = JSON.parse(stdout.slice(4, 4 + respLen).toString());
-        if (resp.status === 'ok') {
-            process.stdout.write('OK:' + resp.message);
-            process.exit(0);
-        }
-    }
-    process.stderr.write(stderr);
-    process.exit(1);
-});
-" 2>&1) || true
-
-if echo "$VERIFY_RESULT" | grep -q "^OK:"; then
+if echo "$VERIFY_RESULT" | grep -q "^SUCCESS:"; then
     echo -e "       ${GREEN}${VERIFY_RESULT}${NC}"
 else
     echo -e "       ${RED}警告: Native host 验证失败${NC}"
