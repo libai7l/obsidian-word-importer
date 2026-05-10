@@ -35,12 +35,12 @@ async function getCache(word) {
   });
 }
 
-async function setCache(word, pos, meaning, pronunciation, etymology) {
+async function setCache(word, meaning) {
   const db = await openCache();
   return new Promise((resolve) => {
     const tx = db.transaction(CACHE_STORE, "readwrite");
     const store = tx.objectStore(CACHE_STORE);
-    store.put({ word, pos, meaning, pronunciation, etymology, ts: Date.now() });
+    store.put({ word, meaning, ts: Date.now() });
     tx.oncomplete = () => resolve();
   });
 }
@@ -57,7 +57,7 @@ function isDebounced(word, seconds) {
 async function getSettings() {
   const defaults = {
     vault_path: "",
-    target_file: "6英语/论文单词.md",
+    target_file: "论文单词.md",
     dictionary_api: "google",
     notifications_enabled: true,
     debounce_seconds: 60,
@@ -80,21 +80,6 @@ function showNotification(title, message) {
   });
 }
 
-function buildTitle(word, pronunciation) {
-  if (pronunciation) {
-    return `${word} ${pronunciation}`;
-  }
-  return word;
-}
-
-function buildMessage(pos, meaning, etymology) {
-  let msg = `[${pos}] ${meaning}`;
-  if (etymology) {
-    msg += `\n${etymology}`;
-  }
-  return msg;
-}
-
 async function processWord(word, pageTranslation) {
   const settings = await getSettings();
 
@@ -110,10 +95,7 @@ async function processWord(word, pageTranslation) {
   const cached = await getCache(word);
   if (cached) {
     if (settings.notifications_enabled) {
-      showNotification(
-        "📌 已存在: " + buildTitle(word, cached.pronunciation),
-        buildMessage(cached.pos, cached.meaning, cached.etymology)
-      );
+      showNotification("已存在: " + word, cached.meaning);
     }
     return;
   }
@@ -130,31 +112,23 @@ async function processWord(word, pageTranslation) {
     }
 
     if (response.status === "ok") {
-      await setCache(word, response.pos, response.meaning,
-                     response.pronunciation, response.etymology);
+      await setCache(word, response.meaning);
       if (settings.notifications_enabled) {
-        showNotification(
-          "✅ 已收录: " + buildTitle(word, response.pronunciation),
-          buildMessage(response.pos, response.meaning, response.etymology)
-        );
+        showNotification("已收录: " + word, response.meaning);
       }
     } else if (response.status === "exists") {
-      await setCache(word, response.pos, response.meaning,
-                     response.pronunciation, response.etymology);
+      await setCache(word, response.meaning);
       if (settings.notifications_enabled) {
-        showNotification(
-          "📌 已存在: " + buildTitle(word, response.pronunciation),
-          buildMessage(response.pos, response.meaning, response.etymology)
-        );
+        showNotification("已存在: " + word, response.meaning);
       }
     } else if (response.status === "error") {
       if (settings.notifications_enabled) {
-        showNotification("❌ 收录失败: " + word, response.message);
+        showNotification("收录失败: " + word, response.message);
       }
     }
   } catch (err) {
     if (settings.notifications_enabled) {
-      showNotification("❌ 收录失败: " + word, err.message);
+      showNotification("收录失败: " + word, err.message);
     }
   }
 }
@@ -181,7 +155,6 @@ function ensureContextMenu() {
 
 chrome.runtime.onInstalled.addListener(ensureContextMenu);
 chrome.runtime.onStartup.addListener(ensureContextMenu);
-// Also create immediately on service worker start
 ensureContextMenu();
 
 chrome.contextMenus.onClicked.addListener((info, _tab) => {

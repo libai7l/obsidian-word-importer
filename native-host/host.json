@@ -1,7 +1,7 @@
 {
   "name": "com.obsidian.wordimporter",
   "description": "Obsidian Word Importer Native Host",
-  "path": "HOST_PYTHON_PATH_PLACEHOLDER",
+  "path": "HOST_NODE_PATH_PLACEHOLDER",
   "type": "stdio",
   "allowed_origins": [
     "chrome-extension://EXTENSION_ID_PLACEHOLDER/"

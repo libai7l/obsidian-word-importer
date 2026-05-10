@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
-# Obsidian Word Importer — 一键安装脚本 (Google Chrome)
+# Obsidian Word Importer v3.0 — 一键安装脚本 (Google Chrome)
 # ═══════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -12,12 +12,12 @@ NC='\033[0m'
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║   Obsidian Word Importer v2.1 — 一键安装            ║"
+echo "║   Obsidian Word Importer v3.0 — 一键安装            ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-HOST_PY="$SCRIPT_DIR/native-host/host.py"
+HOST_JS="$SCRIPT_DIR/native-host/host.js"
 HOST_JSON="$SCRIPT_DIR/native-host/host.json"
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -25,18 +25,19 @@ HOST_JSON="$SCRIPT_DIR/native-host/host.json"
 # ═══════════════════════════════════════════════════════════════════════
 echo -e "${YELLOW}[1/4]${NC} 检测环境..."
 
-PYTHON=""
-for cmd in python3 python; do
+NODE=""
+for cmd in node; do
     if command -v "$cmd" &>/dev/null; then
-        PYTHON="$cmd"
+        NODE="$cmd"
         break
     fi
 done
-if [ -z "$PYTHON" ]; then
-    echo -e "${RED}错误: 未找到 Python 3，请先安装${NC}"
+if [ -z "$NODE" ]; then
+    echo -e "${RED}错误: 未找到 Node.js，请先安装${NC}"
+    echo "下载: https://nodejs.org/"
     exit 1
 fi
-echo "       Python: $($PYTHON --version)"
+echo "       Node.js: $($NODE --version)"
 
 OS="$(uname -s)"
 
@@ -63,26 +64,23 @@ echo "       Google Chrome: 已检测到"
 # ═══════════════════════════════════════════════════════════════════════
 echo -e "${YELLOW}[2/4]${NC} 计算扩展 ID..."
 
-EXT_ID=$($PYTHON -c "
-import json, hashlib, base64, os
-
-manifest_path = os.path.join('$SCRIPT_DIR', 'manifest.json')
-with open(manifest_path, 'r', encoding='utf-8') as f:
-    manifest = json.load(f)
-
-key_b64 = manifest.get('key', '')
-if not key_b64:
-    path = '$SCRIPT_DIR'.lower().encode('utf-8')
-    h = hashlib.sha256(path).digest()
-else:
-    pubkey_der = base64.b64decode(key_b64)
-    h = hashlib.sha256(pubkey_der).digest()
-
-chars = []
-for b in h[:16]:
-    chars.append(chr(ord('a') + (b >> 4)))
-    chars.append(chr(ord('a') + (b & 0x0f)))
-print(''.join(chars[:32]))
+EXT_ID=$($NODE -e "
+const crypto = require('crypto');
+const fs = require('fs');
+const manifest = JSON.parse(fs.readFileSync('$SCRIPT_DIR/manifest.json', 'utf-8'));
+const keyB64 = manifest.key || '';
+let h;
+if (keyB64) {
+    h = crypto.createHash('sha256').update(Buffer.from(keyB64, 'base64')).digest();
+} else {
+    h = crypto.createHash('sha256').update('$SCRIPT_DIR'.toLowerCase()).digest();
+}
+const chars = [];
+for (let i = 0; i < 16; i++) {
+    chars.push(String.fromCharCode(97 + (h[i] >> 4)));
+    chars.push(String.fromCharCode(97 + (h[i] & 0x0f)));
+}
+process.stdout.write(chars.slice(0, 32).join(''));
 ")
 echo "       ID: $EXT_ID"
 
@@ -91,13 +89,13 @@ echo "       ID: $EXT_ID"
 # ═══════════════════════════════════════════════════════════════════════
 echo -e "${YELLOW}[3/4]${NC} 安装 Native Host 清单..."
 
-chmod +x "$HOST_PY"
+chmod +x "$HOST_JS"
 
 host_dir="$CHROME_CONFIG_DIR/NativeMessagingHosts"
 mkdir -p "$host_dir"
 manifest_file="$host_dir/com.obsidian.wordimporter.json"
 
-sed -e "s|HOST_PYTHON_PATH_PLACEHOLDER|$HOST_PY|g" \
+sed -e "s|HOST_NODE_PATH_PLACEHOLDER|$HOST_JS|g" \
     -e "s|EXTENSION_ID_PLACEHOLDER|$EXT_ID|g" \
     "$HOST_JSON" > "$manifest_file"
 echo "       清单: $manifest_file ✓"
@@ -108,40 +106,40 @@ echo "       清单: $manifest_file ✓"
 echo ""
 echo -e "${YELLOW}[4/4]${NC} 验证 Native Host..."
 
-VERIFY_RESULT=$($PYTHON -c "
-import subprocess, json, struct, threading, sys
+VERIFY_RESULT=$($NODE -e "
+const childProcess = require('child_process');
 
-proc = subprocess.Popen(
-    ['$HOST_PY'],
-    stdin=subprocess.PIPE,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE
-)
+const proc = childProcess.spawn('$HOST_JS', [], {
+    stdio: ['pipe', 'pipe', 'pipe']
+});
 
-msg = json.dumps({'action': 'test'}).encode('utf-8')
-proc.stdin.write(struct.pack('@I', len(msg)))
-proc.stdin.write(msg)
-proc.stdin.flush()
+const msg = JSON.stringify({action: 'test'});
+const lenBuf = Buffer.alloc(4);
+lenBuf.writeUInt32LE(Buffer.byteLength(msg, 'utf-8'), 0);
 
-result = []
-def read_resp():
-    raw_len = proc.stdout.read(4)
-    if raw_len and len(raw_len) == 4:
-        msg_len = struct.unpack('@I', raw_len)[0]
-        raw_msg = proc.stdout.read(msg_len)
-        result.append(raw_msg.decode('utf-8'))
+proc.stdin.write(lenBuf);
+proc.stdin.write(msg);
+proc.stdin.end();
 
-t = threading.Thread(target=read_resp)
-t.start()
-t.join(timeout=10)
-proc.kill()
+const chunks = [];
+const errChunks = [];
+proc.stdout.on('data', (c) => chunks.push(c));
+proc.stderr.on('data', (c) => errChunks.push(c));
 
-if result:
-    resp = json.loads(result[0])
-    if resp.get('status') == 'ok':
-        print('OK:' + resp.get('message', ''))
-        sys.exit(0)
-sys.exit(1)
+proc.on('close', () => {
+    const stdout = Buffer.concat(chunks);
+    const stderr = Buffer.concat(errChunks).toString();
+    if (stdout.length >= 4) {
+        const respLen = stdout.slice(0, 4).readUInt32LE(0);
+        const resp = JSON.parse(stdout.slice(4, 4 + respLen).toString());
+        if (resp.status === 'ok') {
+            process.stdout.write('OK:' + resp.message);
+            process.exit(0);
+        }
+    }
+    process.stderr.write(stderr);
+    process.exit(1);
+});
 " 2>&1) || true
 
 if echo "$VERIFY_RESULT" | grep -q "^OK:"; then
@@ -149,7 +147,7 @@ if echo "$VERIFY_RESULT" | grep -q "^OK:"; then
 else
     echo -e "       ${RED}警告: Native host 验证失败${NC}"
     echo "       $VERIFY_RESULT"
-    echo "       请检查 Python 3 是否已正确安装"
+    echo "       请检查 Node.js 是否已正确安装"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════

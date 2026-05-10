@@ -4,7 +4,7 @@ const btnTest = document.getElementById("btn-test");
 
 const defaults = {
   vault_path: "",
-  target_file: "6英语/论文单词.md",
+  target_file: "论文单词.md",
   dictionary_api: "google",
   debounce_seconds: 60,
   notifications_enabled: true,
