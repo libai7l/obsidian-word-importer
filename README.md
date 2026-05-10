@@ -46,9 +46,9 @@ Firefox 根据版本有所不同：
 
 > **安装 Firefox Developer Edition (Linux)**:
 > ```bash
-> wget -O /tmp/firefox-dev.tar.bz2 \
+> wget -O /tmp/firefox-dev.tar.xz \
 >   'https://download.mozilla.org/?product=firefox-devedition-latest-ssl&os=linux64&lang=zh-CN'
-> sudo tar -xjf /tmp/firefox-dev.tar.bz2 -C /opt/
+> sudo tar -xf /tmp/firefox-dev.tar.xz -C /opt/
 > sudo ln -sf /opt/firefox/firefox /usr/local/bin/firefox-dev
 > firefox-dev --no-remote &
 > ```
