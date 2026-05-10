@@ -1,8 +1,6 @@
 # Obsidian Word Importer
 
-选中英文单词/词组 → Ctrl+C → 自动收录到 Obsidian 词库。支持 Chrome / Edge。
-
-![](icons/icon128.png)
+选中英文单词/词组 → Ctrl+C → 自动收录到 Obsidian 词库。支持 Chrome / Edge / Chromium。
 
 ## 功能
 
@@ -17,7 +15,11 @@
 - **防抖去重**: 同一单词在设定时间内不重复查询
 - **右键菜单**: 右键选中单词 → 「添加到 Obsidian 词库」
 
-## 安装
+---
+
+## 下载安装
+
+### Ubuntu / Linux
 
 ```bash
 git clone https://github.com/libai7l/obsidian-word-importer.git
@@ -35,9 +37,31 @@ chmod +x install.sh && ./install.sh
 ./install.sh all      # 全部强制安装
 ```
 
-Chrome/Edge/Chromium 重启即可使用。
+### Windows
 
-### 配置（可选）
+**方式一：PowerShell 一键安装**
+```powershell
+git clone https://github.com/libai7l/obsidian-word-importer.git
+cd obsidian-word-importer
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+**方式二：指定浏览器**
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1 -Browser chrome
+powershell -ExecutionPolicy Bypass -File install.ps1 -Browser edge
+powershell -ExecutionPolicy Bypass -File install.ps1 -Browser all
+```
+
+**Windows 前提要求：**
+- 已安装 Python 3（[下载地址](https://www.python.org/downloads/)）
+- 已安装 Chrome / Edge / Chromium 浏览器
+
+> 安装完成后重启浏览器即可使用。
+
+---
+
+## 配置（可选）
 
 点击浏览器工具栏的扩展图标：
 
@@ -50,6 +74,10 @@ Chrome/Edge/Chromium 重启即可使用。
 | 桌面通知 | 是否弹出桌面通知 | 开启 |
 
 > **注意**: 如果未配置 Vault 路径，插件会自动扫描系统中已安装的 Obsidian Vault。
+>
+> **Windows 路径示例**: `C:\Users\用户名\Documents\Obsidian Vault`
+>
+> **Ubuntu 路径示例**: `/home/用户名/文档/Obsidian Vault`
 
 ## 使用
 
@@ -116,11 +144,11 @@ Chrome/Edge/Chromium 重启即可使用。
 
 ## 支持浏览器
 
-| 浏览器 | 一键安装 | 右键菜单 | 桌面通知 |
-|--------|----------|----------|----------|
-| Google Chrome | ✓ | ✓ | ✓ |
-| Microsoft Edge | ✓ | ✓ | ✓ |
-| Chromium | ✓ | ✓ | ✓ |
+| 浏览器 | Ubuntu | Windows | 右键菜单 | 桌面通知 |
+|--------|--------|---------|----------|----------|
+| Google Chrome | ✓ | ✓ | ✓ | ✓ |
+| Microsoft Edge | ✓ | ✓ | ✓ | ✓ |
+| Chromium | ✓ | ✓ | ✓ | ✓ |
 
 ## 技术架构
 
@@ -147,22 +175,24 @@ Chrome/Edge/Chromium 重启即可使用。
 
 ```
 obsidian-word-importer/
-├── install.sh              # 一键安装脚本
-├── manifest.json           # MV3 扩展清单 (Chrome/Edge)
-├── background.js           # Service Worker
-├── content.js              # 网页内容脚本
+├── install.sh               # Ubuntu/Linux 一键安装脚本
+├── install.ps1              # Windows PowerShell 一键安装脚本
+├── manifest.json            # MV3 扩展清单 (Chrome/Edge)
+├── background.js            # Service Worker
+├── content.js               # 网页内容脚本
 ├── .gitignore
 ├── popup/
-│   ├── popup.html          # 配置面板
-│   ├── popup.js            # 配置逻辑
-│   └── popup.css           # 样式
+│   ├── popup.html           # 配置面板
+│   ├── popup.js             # 配置逻辑
+│   └── popup.css            # 样式
 ├── icons/
 │   ├── icon16.png
 │   ├── icon48.png
 │   └── icon128.png
 ├── native-host/
-│   ├── host.py             # Python Native Host（翻译/写入/排序）
-│   └── host.json           # Chrome/Edge Native Host 清单模板
+│   ├── host.py              # Python Native Host（翻译/写入/排序）
+│   ├── host.json            # Native Host 清单模板
+│   └── install.sh           # Native Host 独立安装脚本 (Linux)
 └── README.md
 ```
 
