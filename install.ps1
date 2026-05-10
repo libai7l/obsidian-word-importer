@@ -1,17 +1,11 @@
 # ═══════════════════════════════════════════════════════════════════════
-# Obsidian Word Importer - Windows 一键安装脚本
-# 支持 Chrome / Edge / Chromium
+# Obsidian Word Importer - Windows 一键安装脚本 (Google Chrome)
 # 用法:
 #   powershell -ExecutionPolicy Bypass -File install.ps1
-#   powershell -ExecutionPolicy Bypass -File install.ps1 -Browser chrome
-#   powershell -ExecutionPolicy Bypass -File install.ps1 -Browser all
 # ═══════════════════════════════════════════════════════════════════════
-param(
-    [string]$Browser = ""
-)
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$HostBat = Join-Path $ScriptDir "native-host\host.bat"
+$HostBat  = Join-Path $ScriptDir "native-host\host.bat"
 $HostJson = Join-Path $ScriptDir "native-host\host.json"
 
 Write-Host ""
@@ -23,17 +17,19 @@ Write-Host ""
 # ═══════════════════════════════════════════════════════════════════════
 # 1. 检测环境
 # ═══════════════════════════════════════════════════════════════════════
-Write-Host "[1/4] 检测环境..." -ForegroundColor Yellow
+Write-Host "[1/5] 检测环境..." -ForegroundColor Yellow
 
 # 检测 Python
-$Python = $null
+$Python     = $null
+$PythonPath = $null
 foreach ($cmd in @("python", "python3", "py")) {
     $result = Get-Command $cmd -ErrorAction SilentlyContinue
     if ($result) {
         try {
             $ver = & $cmd --version 2>&1
             Write-Host "       Python: $ver"
-            $Python = $cmd
+            $Python     = $cmd
+            $PythonPath = $result.Source
             break
         } catch {}
     }
@@ -45,83 +41,48 @@ if (-not $Python) {
     exit 1
 }
 
-# 验证 host.bat 存在
 if (-not (Test-Path $HostBat)) {
     Write-Host "错误: 未找到 native-host\host.bat" -ForegroundColor Red
     exit 1
 }
 
-# 操作系统
-Write-Host "       操作系统: Windows"
+# 使用绝对路径重写 host.bat，Chrome 进程环境可能没有完整 PATH
+$HostBatContent = @"
+@echo off
+"$PythonPath" "%~dp0host.py" %*
+"@
+Set-Content -Path $HostBat -Value $HostBatContent -Encoding ASCII
+Write-Host "       host.bat -> $PythonPath" -ForegroundColor Gray
 
-# ── 浏览器配置表 ──
-$Browsers = @{
-    "chrome" = @{
-        "Process" = "chrome"
-        "ConfigDir" = "$env:LOCALAPPDATA\Google\Chrome"
-        "Display" = "Google Chrome"
-    }
-    "edge" = @{
-        "Process" = "msedge"
-        "ConfigDir" = "$env:LOCALAPPDATA\Microsoft\Edge"
-        "Display" = "Microsoft Edge"
-    }
-    "chromium" = @{
-        "Process" = "chrome"
-        "ConfigDir" = "$env:LOCALAPPDATA\Chromium"
-        "Display" = "Chromium"
-    }
-}
-
-# ── 确定要安装的目标浏览器 ──
-$TargetBrowsers = @()
-if ($Browser) {
-    $choices = $Browser -split ','
-    foreach ($c in $choices) {
-        $c = $c.Trim().ToLower()
-        if ($c -eq "all") {
-            $TargetBrowsers = $Browsers.Keys
-            break
-        }
-        if ($Browsers.ContainsKey($c)) {
-            $TargetBrowsers += $c
-        } else {
-            Write-Host "未知浏览器: $c (支持: chrome, edge, chromium, all)" -ForegroundColor Red
-            exit 1
-        }
-    }
-}
-
-# 如果没指定，自动检测已安装的浏览器
-if ($TargetBrowsers.Count -eq 0) {
-    foreach ($key in $Browsers.Keys) {
-        $configDir = $Browsers[$key].ConfigDir
-        if (Test-Path $configDir) {
-            $TargetBrowsers += $key
-        }
-    }
-}
-
-if ($TargetBrowsers.Count -eq 0) {
-    Write-Host "未检测到已安装的浏览器" -ForegroundColor Red
-    Write-Host "手动指定: .\install.ps1 -Browser chrome|edge|chromium|all" -ForegroundColor Yellow
+# 确认 Chrome 已安装
+$ChromeConfigDir = "$env:LOCALAPPDATA\Google\Chrome"
+if (-not (Test-Path $ChromeConfigDir)) {
+    Write-Host "错误: 未检测到 Google Chrome" -ForegroundColor Red
+    Write-Host "下载: https://www.google.com/chrome/" -ForegroundColor Red
     exit 1
 }
-
-Write-Host "       目标浏览器:"
-foreach ($b in $TargetBrowsers) {
-    Write-Host "         - $($Browsers[$b].Display)"
-}
+Write-Host "       Google Chrome: 已检测到" -ForegroundColor Green
 
 # ═══════════════════════════════════════════════════════════════════════
-# 2. 计算扩展 ID
+# 2. 计算扩展 ID（基于 manifest.json 中的 key）
 # ═══════════════════════════════════════════════════════════════════════
-Write-Host "[2/4] 计算扩展 ID..." -ForegroundColor Yellow
+Write-Host "[2/5] 计算扩展 ID..." -ForegroundColor Yellow
 
 $ExtIdScript = @"
-import hashlib
-path = r'$ScriptDir'.lower().encode('utf-8')
-h = hashlib.sha256(path).digest()
+import json, hashlib, base64, os
+
+manifest_path = os.path.join(r'$ScriptDir', 'manifest.json')
+with open(manifest_path, 'r', encoding='utf-8') as f:
+    manifest = json.load(f)
+
+key_b64 = manifest.get('key', '')
+if not key_b64:
+    path = r'$ScriptDir'.lower().encode('utf-8')
+    h = hashlib.sha256(path).digest()
+else:
+    pubkey_der = base64.b64decode(key_b64)
+    h = hashlib.sha256(pubkey_der).digest()
+
 chars = []
 for b in h[:16]:
     chars.append(chr(ord('a') + (b >> 4)))
@@ -135,129 +96,108 @@ Write-Host "       ID: $ExtId"
 # ═══════════════════════════════════════════════════════════════════════
 # 3. 安装 Native Host
 # ═══════════════════════════════════════════════════════════════════════
-Write-Host "[3/4] 安装 Native Host..." -ForegroundColor Yellow
+Write-Host "[3/5] 安装 Native Host 清单..." -ForegroundColor Yellow
 
-foreach ($b in $TargetBrowsers) {
-    $configDir = $Browsers[$b].ConfigDir
-    $processName = $Browsers[$b].Process
-    $displayName = $Browsers[$b].Display
+$hostJsonContent = Get-Content $HostJson -Raw -Encoding UTF8
+$hostJsonContent = $hostJsonContent.Replace("HOST_PYTHON_PATH_PLACEHOLDER", $HostBat.Replace("\", "\\"))
+$hostJsonContent = $hostJsonContent.Replace("EXTENSION_ID_PLACEHOLDER", $ExtId)
 
-    Write-Host ""
-    Write-Host "       --- $displayName ---"
-
-    # 生成 Native Host 清单
-    $hostJsonContent = Get-Content $HostJson -Raw -Encoding UTF8
-    $hostJsonContent = $hostJsonContent.Replace("HOST_PYTHON_PATH_PLACEHOLDER", $HostBat.Replace("\", "\\"))
-    $hostJsonContent = $hostJsonContent.Replace("EXTENSION_ID_PLACEHOLDER", $ExtId)
-
-    # 写入 NativeMessagingHosts 目录
-    $hostDir = Join-Path $configDir "NativeMessagingHosts"
-    if (-not (Test-Path $hostDir)) {
-        New-Item -ItemType Directory -Path $hostDir -Force | Out-Null
-    }
-
-    $manifestFile = Join-Path $hostDir "com.obsidian.wordimporter.json"
-    Set-Content -Path $manifestFile -Value $hostJsonContent -Encoding UTF8
-    Write-Host "       清单: $manifestFile" -ForegroundColor Green
-
-    # 关闭浏览器
-    $proc = Get-Process -Name $processName -ErrorAction SilentlyContinue
-    if ($proc) {
-        Write-Host "       正在关闭 $displayName..."
-        $proc | Stop-Process -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
-    }
-
-    # 注册扩展（注入 Preferences）
-    $prefsPaths = @(
-        (Join-Path $configDir "Default\Preferences"),
-        (Join-Path $configDir "Default\Secure Preferences")
-    )
-
-    foreach ($prefsPath in $prefsPaths) {
-        if (-not (Test-Path $prefsPath)) { continue }
-
-        $prefsScript = @"
-import json
-
-prefs_path = r'$prefsPath'
-ext_id = '$ExtId'
-ext_path = r'$ScriptDir'
-manifest_path = r'$(Join-Path $ScriptDir "manifest.json")'
-
-with open(prefs_path, 'r', encoding='utf-8') as f:
-    prefs = json.load(f)
-
-with open(manifest_path, 'r', encoding='utf-8') as f:
-    manifest = json.load(f)
-
-prefs.setdefault('extensions', {}).setdefault('settings', {})
-prefs['extensions']['settings'][ext_id] = {
-    'active_permissions': {
-        'api': manifest.get('permissions', []),
-        'explicit_host': manifest.get('host_permissions', []),
-        'manifest_permissions': [],
-        'scriptable_host': manifest.get('host_permissions', []),
-    },
-    'creation_flags': 38,
-    'first_install_time': '13422803526400914',
-    'from_webstore': False,
-    'granted_permissions': {
-        'api': manifest.get('permissions', []),
-        'explicit_host': manifest.get('host_permissions', []),
-        'manifest_permissions': [],
-        'scriptable_host': manifest.get('host_permissions', []),
-    },
-    'has_started_service_worker': True,
-    'location': 4,
-    'manifest': manifest,
-    'newAllowFileAccess': True,
-    'path': ext_path,
-    'preferences': {},
-    'was_installed_by_default': False,
-    'was_installed_by_oem': False,
-    'withholding_permissions': False,
+$hostDir = Join-Path $ChromeConfigDir "NativeMessagingHosts"
+if (-not (Test-Path $hostDir)) {
+    New-Item -ItemType Directory -Path $hostDir -Force | Out-Null
 }
 
-if 'protection' in prefs:
-    macs = prefs['protection'].get('macs', {})
-    if 'extensions' in macs:
-        macs['extensions'].pop('settings', None)
-    if not macs.get('extensions'):
-        macs.pop('extensions', None)
-    if not macs:
-        prefs['protection'].pop('macs', None)
-    if not prefs['protection']:
-        prefs.pop('protection', None)
+$manifestFile = Join-Path $hostDir "com.obsidian.wordimporter.json"
+Set-Content -Path $manifestFile -Value $hostJsonContent -Encoding UTF8
+Write-Host "       清单: $manifestFile" -ForegroundColor Green
 
-prefs.pop('super_mac', None)
+# 注册表项（Windows 双保险）
+$regPath = "HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.obsidian.wordimporter"
+New-Item -Path $regPath -Force | Out-Null
+Set-ItemProperty -Path $regPath -Name "(Default)" -Value $manifestFile -Type String -Force
+Write-Host "       注册表: HKCU\...\NativeMessagingHosts\com.obsidian.wordimporter" -ForegroundColor Green
 
-with open(prefs_path, 'w', encoding='utf-8') as f:
-    json.dump(prefs, f, indent=2, ensure_ascii=False)
+# ═══════════════════════════════════════════════════════════════════════
+# 4. 验证 Native Host
+# ═══════════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "[4/5] 验证 Native Host..." -ForegroundColor Yellow
+
+$VerifyScript = @"
+import subprocess, json, struct, sys, threading
+
+proc = subprocess.Popen(
+    [r'$HostBat'],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE
+)
+
+msg = json.dumps({'action': 'test'}).encode('utf-8')
+proc.stdin.write(struct.pack('@I', len(msg)))
+proc.stdin.write(msg)
+proc.stdin.flush()
+
+result = []
+def read_resp():
+    raw_len = proc.stdout.read(4)
+    if raw_len and len(raw_len) == 4:
+        msg_len = struct.unpack('@I', raw_len)[0]
+        raw_msg = proc.stdout.read(msg_len)
+        result.append(raw_msg.decode('utf-8'))
+
+t = threading.Thread(target=read_resp)
+t.start()
+t.join(timeout=10)
+proc.kill()
+
+if result:
+    resp = json.loads(result[0])
+    if resp.get('status') == 'ok':
+        print('SUCCESS:' + resp.get('message', ''))
+        sys.exit(0)
+    else:
+        print('WARN:' + resp.get('message', ''))
+        sys.exit(0)
+else:
+    stderr = proc.stderr.read().decode('utf-8', errors='replace')
+    print('FAIL: Native host 无响应')
+    if stderr:
+        print('STDERR:' + stderr)
+    sys.exit(1)
 "@
-        & $Python -c $prefsScript 2>$null
-        $prefsName = Split-Path -Leaf $prefsPath
-        Write-Host "       注册: $prefsName" -ForegroundColor Green
-    }
+
+$verifyResult = & $Python -c $VerifyScript 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "       警告: Native host 验证失败" -ForegroundColor Red
+    Write-Host "       $verifyResult" -ForegroundColor Red
+} else {
+    Write-Host "       $verifyResult" -ForegroundColor Green
 }
 
 # ═══════════════════════════════════════════════════════════════════════
-# 4. 完成
+# 5. 完成
 # ═══════════════════════════════════════════════════════════════════════
 Write-Host ""
 Write-Host "======================================================================" -ForegroundColor Green
-Write-Host "               安装完成！请重启浏览器" -ForegroundColor Green
+Write-Host "                 安装完成！请按以下步骤加载扩展" -ForegroundColor Green
 Write-Host "======================================================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "已安装到:"
-foreach ($b in $TargetBrowsers) {
-    Write-Host "  $($Browsers[$b].Display)"
-}
+Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Yellow
+Write-Host "  下一步：在 Chrome 中加载扩展" -ForegroundColor Yellow
+Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "验证安装:"
-Write-Host "  浏览器 → 访问 chrome://extensions（Edge: edge://extensions）"
-Write-Host "  确认 [Obsidian Word Importer] 已启用"
+Write-Host "  1. 打开: chrome://extensions"
+Write-Host "  2. 开启右上角「开发者模式」(Developer mode)"
+Write-Host "  3. 点击「加载已解压的扩展程序」(Load unpacked)"
+Write-Host "  4. 选择: $ScriptDir"
+Write-Host ""
+Write-Host "  5. 加载完成后，点击扩展图标配置 Vault 路径" -ForegroundColor White
 Write-Host ""
 Write-Host "使用: 选中英文单词 -> Ctrl+C -> 自动收录到 Obsidian"
-Write-Host "配置: 点击扩展图标 -> 设置 Vault 路径"
-Write-Host ""
+
+try {
+    Start-Process "chrome://extensions" -ErrorAction SilentlyContinue
+    Write-Host ""
+    Write-Host "已自动打开 Chrome 扩展管理页面" -ForegroundColor Gray
+} catch {}

@@ -1,5 +1,6 @@
 # Chrome extension signing key
 key.pem
+extension_key.pem
 
 # Firefox XPI build
 *.xpi

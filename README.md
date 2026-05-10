@@ -1,6 +1,6 @@
 # Obsidian Word Importer
 
-选中英文单词/词组 → Ctrl+C → 自动收录到 Obsidian 词库。支持 Chrome / Edge / Chromium。
+选中英文单词/词组 → Ctrl+C → 自动收录到 Obsidian 词库（Google Chrome）。
 
 ## 功能
 
@@ -19,6 +19,13 @@
 
 ## 下载安装
 
+安装分为两步：
+
+1. **运行 install 脚本** → 注册 Native Messaging Host（操作系统层面）
+2. **加载扩展** → 浏览器开发者模式 → 加载已解压的扩展程序
+
+> 为什么不是一键？Chrome 扩展的 nativeMessaging 需要先把 host 程序注册到操作系统，这一步必须在浏览器外部完成。Chrome Web Store 的扩展也同样需要安装 companion 程序。
+
 ### Ubuntu / Linux
 
 ```bash
@@ -27,37 +34,32 @@ cd obsidian-word-importer
 chmod +x install.sh && ./install.sh
 ```
 
-**一条命令完成所有安装**。自动检测已安装的浏览器并配置。
+以上命令已完成 **第 1 步**（Native Host 注册）。接下来完成 **第 2 步**：
 
-指定浏览器：
-```bash
-./install.sh          # 自动检测所有已安装浏览器
-./install.sh chrome   # 仅 Chrome
-./install.sh edge     # 仅 Edge
-./install.sh all      # 全部强制安装
-```
+1. 打开浏览器，访问 `chrome://extensions`
+2. 开启右上角 **「开发者模式」**
+3. 点击 **「加载已解压的扩展程序」**
+4. 选择 `obsidian-word-importer` 目录
+5. 点击扩展图标 → 配置 Obsidian Vault 路径
 
 ### Windows
 
-**方式一：PowerShell 一键安装**
+**前提要求：**
+- 已安装 Python 3（[下载地址](https://www.python.org/downloads/)），安装时勾选 "Add Python to PATH"
+- 已安装 Google Chrome 浏览器
+
 ```powershell
 git clone https://github.com/libai7l/obsidian-word-importer.git
 cd obsidian-word-importer
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-**方式二：指定浏览器**
-```powershell
-powershell -ExecutionPolicy Bypass -File install.ps1 -Browser chrome
-powershell -ExecutionPolicy Bypass -File install.ps1 -Browser edge
-powershell -ExecutionPolicy Bypass -File install.ps1 -Browser all
-```
+以上命令已完成 **第 1 步**（Native Host 注册 + 自动打开扩展管理页面）。接下来完成 **第 2 步**：
 
-**Windows 前提要求：**
-- 已安装 Python 3（[下载地址](https://www.python.org/downloads/)）
-- 已安装 Chrome / Edge / Chromium 浏览器
-
-> 安装完成后重启浏览器即可使用。
+1. 在自动打开的扩展管理页面上，开启右上角 **「开发者模式」**
+2. 点击 **「加载已解压的扩展程序」**
+3. 选择 `obsidian-word-importer` 目录
+4. 点击扩展图标 → 配置 Obsidian Vault 路径
 
 ---
 
@@ -147,8 +149,6 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -Browser all
 | 浏览器 | Ubuntu | Windows | 右键菜单 | 桌面通知 |
 |--------|--------|---------|----------|----------|
 | Google Chrome | ✓ | ✓ | ✓ | ✓ |
-| Microsoft Edge | ✓ | ✓ | ✓ | ✓ |
-| Chromium | ✓ | ✓ | ✓ | ✓ |
 
 ## 技术架构
 
@@ -177,7 +177,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -Browser all
 obsidian-word-importer/
 ├── install.sh               # Ubuntu/Linux 一键安装脚本
 ├── install.ps1              # Windows PowerShell 一键安装脚本
-├── manifest.json            # MV3 扩展清单 (Chrome/Edge)
+├── manifest.json            # MV3 扩展清单 (Chrome)
 ├── background.js            # Service Worker
 ├── content.js               # 网页内容脚本
 ├── .gitignore
@@ -192,7 +192,7 @@ obsidian-word-importer/
 ├── native-host/
 │   ├── host.py              # Python Native Host（翻译/写入/排序）
 │   ├── host.json            # Native Host 清单模板
-│   └── install.sh           # Native Host 独立安装脚本 (Linux)
+│   └── host.bat             # Windows Native Host 启动器
 └── README.md
 ```
 

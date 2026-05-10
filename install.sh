@@ -1,12 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
-# Obsidian Word Importer — 一键安装脚本
-# 支持 Chrome / Edge / Chromium
-# 用法:
-#   ./install.sh           # 安装到所有已检测到的浏览器
-#   ./install.sh chrome    # 仅 Chrome
-#   ./install.sh edge      # 仅 Edge
-#   ./install.sh all       # 所有浏览器
+# Obsidian Word Importer — 一键安装脚本 (Google Chrome)
 # ═══════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -25,13 +19,6 @@ echo -e "${NC}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOST_PY="$SCRIPT_DIR/native-host/host.py"
 HOST_JSON="$SCRIPT_DIR/native-host/host.json"
-
-
-
-declare -A BROWSER_PROCESS
-declare -A BROWSER_CONFIG_DIR
-declare -A BROWSER_DISPLAY
-declare -A BROWSER_HOST_TEMPLATE
 
 # ═══════════════════════════════════════════════════════════════════════
 # 1. 检测环境
@@ -53,93 +40,44 @@ echo "       Python: $($PYTHON --version)"
 
 OS="$(uname -s)"
 
-# ── 浏览器配置表 ──
-# 格式: 名称:进程名:配置目录:显示名
-declare -A BROWSER_PROCESS
-declare -A BROWSER_CONFIG_DIR
-declare -A BROWSER_DISPLAY
-
+# 确定 Chrome 配置目录
 if [ "$OS" = "Linux" ]; then
-    BROWSER_PROCESS[chrome]="chrome"
-    BROWSER_CONFIG_DIR[chrome]="$HOME/.config/google-chrome"
-    BROWSER_DISPLAY[chrome]="Google Chrome"
-    BROWSER_HOST_TEMPLATE[chrome]="$HOST_JSON"
-
-    BROWSER_PROCESS[edge]="microsoft-edge"
-    BROWSER_CONFIG_DIR[edge]="$HOME/.config/microsoft-edge"
-    BROWSER_DISPLAY[edge]="Microsoft Edge"
-    BROWSER_HOST_TEMPLATE[edge]="$HOST_JSON"
-
-    BROWSER_PROCESS[chromium]="chromium"
-    BROWSER_CONFIG_DIR[chromium]="$HOME/.config/chromium"
-    BROWSER_DISPLAY[chromium]="Chromium"
-    BROWSER_HOST_TEMPLATE[chromium]="$HOST_JSON"
-
-
+    CHROME_CONFIG_DIR="$HOME/.config/google-chrome"
 elif [ "$OS" = "Darwin" ]; then
-    BROWSER_PROCESS[chrome]="Google Chrome"
-    BROWSER_CONFIG_DIR[chrome]="$HOME/Library/Application Support/Google/Chrome"
-    BROWSER_DISPLAY[chrome]="Google Chrome"
-    BROWSER_HOST_TEMPLATE[chrome]="$HOST_JSON"
-
-    BROWSER_PROCESS[edge]="Microsoft Edge"
-    BROWSER_CONFIG_DIR[edge]="$HOME/Library/Application Support/Microsoft Edge"
-    BROWSER_DISPLAY[edge]="Microsoft Edge"
-    BROWSER_HOST_TEMPLATE[edge]="$HOST_JSON"
-
-
+    CHROME_CONFIG_DIR="$HOME/Library/Application Support/Google/Chrome"
 else
     echo -e "${RED}不支持的操作系统: $OS${NC}"
     exit 1
 fi
 
-# ── 确定要安装的目标浏览器 ──
-TARGET_BROWSERS=()
-if [ $# -gt 0 ]; then
-    for arg in "$@"; do
-        if [ -n "${BROWSER_PROCESS[$arg]:-}" ]; then
-            TARGET_BROWSERS+=("$arg")
-        elif [ "$arg" = "all" ]; then
-            TARGET_BROWSERS=("${!BROWSER_PROCESS[@]}")
-            break
-        else
-            echo -e "${RED}未知浏览器: $arg (支持: chrome, edge, chromium, all)${NC}"
-            exit 1
-        fi
-    done
-fi
-
-# 如果没指定，自动检测已安装的浏览器
-if [ ${#TARGET_BROWSERS[@]} -eq 0 ]; then
-    for browser in "${!BROWSER_PROCESS[@]}"; do
-        config_dir="${BROWSER_CONFIG_DIR[$browser]}"
-        if [ -d "$config_dir" ]; then
-            TARGET_BROWSERS+=("$browser")
-        fi
-    done
-fi
-
-if [ ${#TARGET_BROWSERS[@]} -eq 0 ]; then
-    echo -e "${RED}未检测到已安装的浏览器${NC}"
-    echo "手动指定: ./install.sh [chrome|edge|chromium|all]"
+if [ ! -d "$CHROME_CONFIG_DIR" ]; then
+    echo -e "${RED}错误: 未检测到 Google Chrome${NC}"
+    echo "请先安装 Chrome: https://www.google.com/chrome/"
     exit 1
 fi
-
 echo "       操作系统: $OS"
-echo "       目标浏览器:"
-for browser in "${TARGET_BROWSERS[@]}"; do
-    echo "         - ${BROWSER_DISPLAY[$browser]}"
-done
+echo "       Google Chrome: 已检测到"
 
 # ═══════════════════════════════════════════════════════════════════════
-# 2. 计算扩展 ID（基于路径的 SHA256，各浏览器通用）
+# 2. 计算扩展 ID（基于 manifest.json 中的 key）
 # ═══════════════════════════════════════════════════════════════════════
 echo -e "${YELLOW}[2/4]${NC} 计算扩展 ID..."
 
 EXT_ID=$($PYTHON -c "
-import hashlib
-path = '$SCRIPT_DIR'.lower().encode('utf-8')
-h = hashlib.sha256(path).digest()
+import json, hashlib, base64, os
+
+manifest_path = os.path.join('$SCRIPT_DIR', 'manifest.json')
+with open(manifest_path, 'r', encoding='utf-8') as f:
+    manifest = json.load(f)
+
+key_b64 = manifest.get('key', '')
+if not key_b64:
+    path = '$SCRIPT_DIR'.lower().encode('utf-8')
+    h = hashlib.sha256(path).digest()
+else:
+    pubkey_der = base64.b64decode(key_b64)
+    h = hashlib.sha256(pubkey_der).digest()
+
 chars = []
 for b in h[:16]:
     chars.append(chr(ord('a') + (b >> 4)))
@@ -149,130 +87,89 @@ print(''.join(chars[:32]))
 echo "       ID: $EXT_ID"
 
 # ═══════════════════════════════════════════════════════════════════════
-# 3. 对每个浏览器安装 Native Host + 注册扩展
+# 3. 安装 Native Host
 # ═══════════════════════════════════════════════════════════════════════
-echo -e "${YELLOW}[3/4]${NC} 安装 Native Host 并注册扩展..."
+echo -e "${YELLOW}[3/4]${NC} 安装 Native Host 清单..."
 
 chmod +x "$HOST_PY"
 
-for browser in "${TARGET_BROWSERS[@]}"; do
-    config_dir="${BROWSER_CONFIG_DIR[$browser]}"
-    process_name="${BROWSER_PROCESS[$browser]}"
-    display_name="${BROWSER_DISPLAY[$browser]}"
-    host_template="${BROWSER_HOST_TEMPLATE[$browser]}"
+host_dir="$CHROME_CONFIG_DIR/NativeMessagingHosts"
+mkdir -p "$host_dir"
+manifest_file="$host_dir/com.obsidian.wordimporter.json"
 
-    echo ""
-    echo "       ── ${display_name} ──"
-
-    # 3a. Native Host 清单
-    host_dir="$config_dir/NativeMessagingHosts"
-    ext_id_fx="$EXT_ID"
-
-    mkdir -p "$host_dir"
-    manifest_file="$host_dir/com.obsidian.wordimporter.json"
-
-    sed -e "s|HOST_PYTHON_PATH_PLACEHOLDER|$HOST_PY|g" \
-        -e "s|EXTENSION_ID_PLACEHOLDER|$EXT_ID|g" \
-        "$host_template" > "$manifest_file"
-    echo "       清单: $manifest_file ✓"
-
-    # 3b. 关闭浏览器
-    if pgrep -x "$process_name" > /dev/null 2>&1; then
-        echo "       正在关闭 ${display_name}..."
-        pkill -x "$process_name" 2>/dev/null || true
-        sleep 2
-    elif pgrep -f "$process_name" > /dev/null 2>&1; then
-        echo "       正在关闭 ${display_name}..."
-        pkill -f "$process_name" 2>/dev/null || true
-        sleep 2
-    fi
-
-    # 3c. 注册扩展（注入 Preferences）
-        prefs_file="$config_dir/Default/Preferences"
-        secure_prefs="$config_dir/Default/Secure Preferences"
-        for prefs_path in "$prefs_file" "$secure_prefs"; do
-            if [ ! -f "$prefs_path" ]; then
-                continue
-            fi
-
-            $PYTHON -c "
-import json
-
-prefs_path = '''$prefs_path'''
-ext_id = '$EXT_ID'
-ext_path = '$SCRIPT_DIR'
-
-with open(prefs_path, 'r') as f:
-    prefs = json.load(f)
-
-with open('$SCRIPT_DIR/manifest.json') as f:
-    manifest = json.load(f)
-
-prefs.setdefault('extensions', {}).setdefault('settings', {})
-prefs['extensions']['settings'][ext_id] = {
-    'active_permissions': {
-        'api': manifest.get('permissions', []),
-        'explicit_host': manifest.get('host_permissions', []),
-        'manifest_permissions': [],
-        'scriptable_host': manifest.get('host_permissions', []),
-    },
-    'creation_flags': 38,
-    'first_install_time': '13422803526400914',
-    'from_webstore': False,
-    'granted_permissions': {
-        'api': manifest.get('permissions', []),
-        'explicit_host': manifest.get('host_permissions', []),
-        'manifest_permissions': [],
-        'scriptable_host': manifest.get('host_permissions', []),
-    },
-    'has_started_service_worker': True,
-    'location': 4,
-    'manifest': manifest,
-    'newAllowFileAccess': True,
-    'path': ext_path,
-    'preferences': {},
-    'was_installed_by_default': False,
-    'was_installed_by_oem': False,
-    'withholding_permissions': False,
-}
-
-if 'protection' in prefs:
-    macs = prefs['protection'].get('macs', {})
-    if 'extensions' in macs:
-        macs['extensions'].pop('settings', None)
-    if not macs.get('extensions'):
-        macs.pop('extensions', None)
-    if not macs:
-        prefs['protection'].pop('macs', None)
-    if not prefs['protection']:
-        prefs.pop('protection', None)
-
-prefs.pop('super_mac', None)
-
-with open(prefs_path, 'w') as f:
-    json.dump(prefs, f, indent=2, ensure_ascii=False)
-"
-            echo "       注册: $(basename "$prefs_path") ✓"
-        done
-done
+sed -e "s|HOST_PYTHON_PATH_PLACEHOLDER|$HOST_PY|g" \
+    -e "s|EXTENSION_ID_PLACEHOLDER|$EXT_ID|g" \
+    "$HOST_JSON" > "$manifest_file"
+echo "       清单: $manifest_file ✓"
 
 # ═══════════════════════════════════════════════════════════════════════
-# 4. 完成
+# 4. 验证 Native Host
+# ═══════════════════════════════════════════════════════════════════════
+echo ""
+echo -e "${YELLOW}[4/4]${NC} 验证 Native Host..."
+
+VERIFY_RESULT=$($PYTHON -c "
+import subprocess, json, struct, threading, sys
+
+proc = subprocess.Popen(
+    ['$HOST_PY'],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE
+)
+
+msg = json.dumps({'action': 'test'}).encode('utf-8')
+proc.stdin.write(struct.pack('@I', len(msg)))
+proc.stdin.write(msg)
+proc.stdin.flush()
+
+result = []
+def read_resp():
+    raw_len = proc.stdout.read(4)
+    if raw_len and len(raw_len) == 4:
+        msg_len = struct.unpack('@I', raw_len)[0]
+        raw_msg = proc.stdout.read(msg_len)
+        result.append(raw_msg.decode('utf-8'))
+
+t = threading.Thread(target=read_resp)
+t.start()
+t.join(timeout=10)
+proc.kill()
+
+if result:
+    resp = json.loads(result[0])
+    if resp.get('status') == 'ok':
+        print('OK:' + resp.get('message', ''))
+        sys.exit(0)
+sys.exit(1)
+" 2>&1) || true
+
+if echo "$VERIFY_RESULT" | grep -q "^OK:"; then
+    echo -e "       ${GREEN}${VERIFY_RESULT}${NC}"
+else
+    echo -e "       ${RED}警告: Native host 验证失败${NC}"
+    echo "       $VERIFY_RESULT"
+    echo "       请检查 Python 3 是否已正确安装"
+fi
+
+# ═══════════════════════════════════════════════════════════════════════
+# 完成
 # ═══════════════════════════════════════════════════════════════════════
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║              安装完成！请重启浏览器                    ║${NC}"
+echo -e "${GREEN}║       Native Host 注册完成！按以下步骤加载扩展       ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo "已安装到:"
-for browser in "${TARGET_BROWSERS[@]}"; do
-    echo "  ${BROWSER_DISPLAY[$browser]}"
-done
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${YELLOW}  下一步：在 Chrome 中加载扩展${NC}"
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo "验证安装:"
-echo "  打开浏览器 → 访问 chrome://extensions（Edge: edge://extensions）"
-echo "  确认「Obsidian Word Importer」已启用"
+echo "  1. 打开 chrome://extensions"
+echo "  2. 开启右上角「开发者模式」(Developer mode)"
+echo "  3. 点击「加载已解压的扩展程序」(Load unpacked)"
+echo "  4. 选择: $SCRIPT_DIR"
+echo ""
+echo "  5. 加载完成后，点击扩展图标配置 Vault 路径"
 echo ""
 echo "使用: 选中英文单词 → Ctrl+C → 自动收录到 Obsidian"
-echo "配置: 点击扩展图标 → 设置 Vault 路径（可选，插件会自动检测）"
 echo ""
