@@ -23,7 +23,16 @@ Chrome 浏览器扩展 —— 选中英文单词/词组 → Ctrl+C 自动收录�
 chmod +x install.sh && ./install.sh
 ```
 
-**一条命令完成所有安装**：Native Host 清单 + 扩展注册 + 权限配置。重启 Chrome 即可使用。
+**一条命令完成所有安装**。支持 Chrome / Edge / Chromium，自动检测已安装的浏览器。
+
+也可指定浏览器：
+```bash
+./install.sh chrome    # 仅 Chrome
+./install.sh edge      # 仅 Edge
+./install.sh all       # 所有已安装的
+```
+
+重启浏览器即可使用。
 
 ### 配置（可选）
 

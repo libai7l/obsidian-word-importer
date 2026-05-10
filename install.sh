@@ -1,7 +1,11 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
 # Obsidian Word Importer — 一键安装脚本
-# 用法: chmod +x install.sh && ./install.sh
+# 支持 Chrome / Edge / Chromium
+# 用法:
+#   ./install.sh          # 安装到所有已检测到的浏览器
+#   ./install.sh chrome   # 仅 Chrome
+#   ./install.sh edge     # 仅 Edge
 # ═══════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -24,7 +28,7 @@ HOST_JSON="$SCRIPT_DIR/native-host/host.json"
 # ═══════════════════════════════════════════════════════════════════════
 # 1. 检测环境
 # ═══════════════════════════════════════════════════════════════════════
-echo -e "${YELLOW}[1/5]${NC} 检测环境..."
+echo -e "${YELLOW}[1/4]${NC} 检测环境..."
 
 PYTHON=""
 for cmd in python3 python; do
@@ -39,27 +43,81 @@ if [ -z "$PYTHON" ]; then
 fi
 echo "       Python: $($PYTHON --version)"
 
-case "$(uname -s)" in
-    Linux)
-        CHROME_PREFS="$HOME/.config/google-chrome/Default/Preferences"
-        CHROME_PREFS_SECURE="$HOME/.config/google-chrome/Default/Secure Preferences"
-        HOST_DIR="$HOME/.config/google-chrome/NativeMessagingHosts"
-        ;;
-    Darwin)
-        CHROME_PREFS="$HOME/Library/Application Support/Google/Chrome/Default/Preferences"
-        CHROME_PREFS_SECURE="$HOME/Library/Application Support/Google/Chrome/Default/Secure Preferences"
-        HOST_DIR="$HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts"
-        ;;
-    *)
-        echo -e "${RED}不支持的操作系统${NC}"
-        exit 1
-        ;;
-esac
+OS="$(uname -s)"
+
+# ── 浏览器配置表 ──
+# 格式: 名称:进程名:配置目录:显示名
+declare -A BROWSER_PROCESS
+declare -A BROWSER_CONFIG_DIR
+declare -A BROWSER_DISPLAY
+
+if [ "$OS" = "Linux" ]; then
+    BROWSER_PROCESS[chrome]="chrome"
+    BROWSER_CONFIG_DIR[chrome]="$HOME/.config/google-chrome"
+    BROWSER_DISPLAY[chrome]="Google Chrome"
+
+    BROWSER_PROCESS[edge]="microsoft-edge"
+    BROWSER_CONFIG_DIR[edge]="$HOME/.config/microsoft-edge"
+    BROWSER_DISPLAY[edge]="Microsoft Edge"
+
+    BROWSER_PROCESS[chromium]="chromium"
+    BROWSER_CONFIG_DIR[chromium]="$HOME/.config/chromium"
+    BROWSER_DISPLAY[chromium]="Chromium"
+elif [ "$OS" = "Darwin" ]; then
+    BROWSER_PROCESS[chrome]="Google Chrome"
+    BROWSER_CONFIG_DIR[chrome]="$HOME/Library/Application Support/Google/Chrome"
+    BROWSER_DISPLAY[chrome]="Google Chrome"
+
+    BROWSER_PROCESS[edge]="Microsoft Edge"
+    BROWSER_CONFIG_DIR[edge]="$HOME/Library/Application Support/Microsoft Edge"
+    BROWSER_DISPLAY[edge]="Microsoft Edge"
+else
+    echo -e "${RED}不支持的操作系统: $OS${NC}"
+    exit 1
+fi
+
+# ── 确定要安装的目标浏览器 ──
+TARGET_BROWSERS=()
+if [ $# -gt 0 ]; then
+    for arg in "$@"; do
+        if [ -n "${BROWSER_PROCESS[$arg]:-}" ]; then
+            TARGET_BROWSERS+=("$arg")
+        elif [ "$arg" = "all" ]; then
+            TARGET_BROWSERS=("${!BROWSER_PROCESS[@]}")
+            break
+        else
+            echo -e "${RED}未知浏览器: $arg (支持: chrome, edge, chromium, all)${NC}"
+            exit 1
+        fi
+    done
+fi
+
+# 如果没指定，自动检测已安装的浏览器
+if [ ${#TARGET_BROWSERS[@]} -eq 0 ]; then
+    for browser in "${!BROWSER_PROCESS[@]}"; do
+        config_dir="${BROWSER_CONFIG_DIR[$browser]}"
+        if [ -d "$config_dir" ]; then
+            TARGET_BROWSERS+=("$browser")
+        fi
+    done
+fi
+
+if [ ${#TARGET_BROWSERS[@]} -eq 0 ]; then
+    echo -e "${RED}未检测到已安装的浏览器${NC}"
+    echo "手动指定: ./install.sh [chrome|edge|chromium|all]"
+    exit 1
+fi
+
+echo "       操作系统: $OS"
+echo "       目标浏览器:"
+for browser in "${TARGET_BROWSERS[@]}"; do
+    echo "         - ${BROWSER_DISPLAY[$browser]}"
+done
 
 # ═══════════════════════════════════════════════════════════════════════
-# 2. 计算扩展 ID（基于路径的 SHA256）
+# 2. 计算扩展 ID（基于路径的 SHA256，各浏览器通用）
 # ═══════════════════════════════════════════════════════════════════════
-echo -e "${YELLOW}[2/5]${NC} 计算扩展 ID..."
+echo -e "${YELLOW}[2/4]${NC} 计算扩展 ID..."
 
 EXT_ID=$($PYTHON -c "
 import hashlib
@@ -71,52 +129,61 @@ for b in h[:16]:
     chars.append(chr(ord('a') + (b & 0x0f)))
 print(''.join(chars[:32]))
 ")
-echo "       扩展 ID: $EXT_ID"
+echo "       ID: $EXT_ID"
 
 # ═══════════════════════════════════════════════════════════════════════
-# 3. 安装 Native Host
+# 3. 对每个浏览器安装 Native Host + 注册扩展
 # ═══════════════════════════════════════════════════════════════════════
-echo -e "${YELLOW}[3/5]${NC} 安装 Native Host..."
+echo -e "${YELLOW}[3/4]${NC} 安装 Native Host 并注册扩展..."
 
-mkdir -p "$HOST_DIR"
 chmod +x "$HOST_PY"
 
-MANIFEST_FILE="$HOST_DIR/com.obsidian.wordimporter.json"
-sed -e "s|HOST_PYTHON_PATH_PLACEHOLDER|$HOST_PY|g" \
-    -e "s|EXTENSION_ID_PLACEHOLDER|$EXT_ID|g" \
-    "$HOST_JSON" > "$MANIFEST_FILE"
+for browser in "${TARGET_BROWSERS[@]}"; do
+    config_dir="${BROWSER_CONFIG_DIR[$browser]}"
+    process_name="${BROWSER_PROCESS[$browser]}"
+    display_name="${BROWSER_DISPLAY[$browser]}"
+    host_dir="$config_dir/NativeMessagingHosts"
+    prefs_file="$config_dir/Default/Preferences"
+    secure_prefs="$config_dir/Default/Secure Preferences"
 
-echo "       清单已写入: $MANIFEST_FILE"
+    echo ""
+    echo "       ── ${display_name} ──"
 
-# ═══════════════════════════════════════════════════════════════════════
-# 4. 注册扩展到 Chrome
-# ═══════════════════════════════════════════════════════════════════════
-echo -e "${YELLOW}[4/5]${NC} 注册扩展到 Chrome..."
+    # 3a. Native Host 清单
+    mkdir -p "$host_dir"
+    manifest_file="$host_dir/com.obsidian.wordimporter.json"
+    sed -e "s|HOST_PYTHON_PATH_PLACEHOLDER|$HOST_PY|g" \
+        -e "s|EXTENSION_ID_PLACEHOLDER|$EXT_ID|g" \
+        "$HOST_JSON" > "$manifest_file"
+    echo "       清单: $manifest_file ✓"
 
-# Kill Chrome to safely modify Preferences
-if pgrep -x "chrome" > /dev/null 2>&1; then
-    echo "       正在关闭 Chrome..."
-    pkill -x chrome 2>/dev/null || true
-    sleep 2
-fi
-
-for PREFS_FILE in "$CHROME_PREFS" "$CHROME_PREFS_SECURE"; do
-    if [ ! -f "$PREFS_FILE" ]; then
-        continue
+    # 3b. 关闭浏览器
+    if pgrep -x "$process_name" > /dev/null 2>&1; then
+        echo "       正在关闭 ${display_name}..."
+        pkill -x "$process_name" 2>/dev/null || true
+        sleep 2
+    elif pgrep -f "$process_name" > /dev/null 2>&1; then
+        echo "       正在关闭 ${display_name}..."
+        pkill -f "$process_name" 2>/dev/null || true
+        sleep 2
     fi
 
-    $PYTHON -c "
-import json, sys
+    # 3c. 注册扩展到 Preferences
+    for prefs_path in "$prefs_file" "$secure_prefs"; do
+        if [ ! -f "$prefs_path" ]; then
+            continue
+        fi
 
-prefs_path = '$PREFS_FILE'
-with open(prefs_path, 'r') as f:
-    prefs = json.load(f)
+        $PYTHON -c "
+import json
 
-# Add extension registration
+prefs_path = '''$prefs_path'''
 ext_id = '$EXT_ID'
 ext_path = '$SCRIPT_DIR'
 
-# Read our manifest
+with open(prefs_path, 'r') as f:
+    prefs = json.load(f)
+
 with open('$SCRIPT_DIR/manifest.json') as f:
     manifest = json.load(f)
 
@@ -148,7 +215,6 @@ prefs['extensions']['settings'][ext_id] = {
     'withholding_permissions': False,
 }
 
-# Clear protection MAC
 if 'protection' in prefs:
     macs = prefs['protection'].get('macs', {})
     if 'extensions' in macs:
@@ -160,28 +226,32 @@ if 'protection' in prefs:
     if not prefs['protection']:
         prefs.pop('protection', None)
 
-# Also clear super_mac if present
 prefs.pop('super_mac', None)
 
 with open(prefs_path, 'w') as f:
     json.dump(prefs, f, indent=2, ensure_ascii=False)
 "
-    echo "       $PREFS_FILE ✓"
+        echo "       注册: $(basename "$prefs_path") ✓"
+    done
 done
 
 # ═══════════════════════════════════════════════════════════════════════
-# 5. 完成
+# 4. 完成
 # ═══════════════════════════════════════════════════════════════════════
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║           安装完成！请重启 Chrome                     ║${NC}"
+echo -e "${GREEN}║              安装完成！请重启浏览器                    ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo "首次使用:"
-echo "  1. 重启 Chrome"
-echo "  2. 在 chrome://extensions 确认扩展已加载"
-echo "  3. 打开任意英文网页，选中单词 Ctrl+C 即可收录"
+echo "已安装到:"
+for browser in "${TARGET_BROWSERS[@]}"; do
+    echo "  ${BROWSER_DISPLAY[$browser]}"
+done
 echo ""
-echo "配置 Obsidian Vault 路径（可选，插件会自动检测）:"
-echo "  点击扩展图标 → 设置 Vault 路径 → 保存"
+echo "验证安装:"
+echo "  打开浏览器 → 访问 chrome://extensions（Edge: edge://extensions）"
+echo "  确认「Obsidian Word Importer」已启用"
+echo ""
+echo "使用: 选中英文单词 → Ctrl+C → 自动收录到 Obsidian"
+echo "配置: 点击扩展图标 → 设置 Vault 路径（可选，插件会自动检测）"
 echo ""
