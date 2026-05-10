@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Obsidian Word Importer</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>📖 Obsidian 单词收录</h1>
+    <span class="version">v2.0</span>
+  </header>
+
+  <form id="settings-form">
+    <div class="form-group">
+      <label for="vault-path">Obsidian Vault 路径</label>
+      <input type="text" id="vault-path" placeholder="例如: /home/user/文档/Obsidian Vault" autocomplete="off">
+    </div>
+
+    <div class="form-group">
+      <label for="target-file">目标文件（相对于 Vault 路径）</label>
+      <input type="text" id="target-file" placeholder="6英语/论文单词.md" autocomplete="off">
+    </div>
+
+    <div class="form-group">
+      <label for="dictionary-api">词典 API</label>
+      <select id="dictionary-api">
+        <option value="google">Google 翻译（推荐，与沉浸式翻译同源）</option>
+        <option value="youdao">有道词典</option>
+        <option value="offline">仅本地离线词库（CET-6+测绘）</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="debounce-seconds">防抖时间（秒）</label>
+      <input type="number" id="debounce-seconds" value="60" min="0" max="3600">
+    </div>
+
+    <div class="form-group checkbox-group">
+      <input type="checkbox" id="notifications-enabled" checked>
+      <label for="notifications-enabled">启用桌面通知</label>
+    </div>
+
+    <div class="button-row">
+      <button type="submit" class="btn btn-primary">保存设置</button>
+      <button type="button" id="btn-test" class="btn btn-secondary">测试 Native Host</button>
+    </div>
+  </form>
+
+  <div id="status" class="status hidden"></div>
+
+  <footer>
+    <p>选中单词/词组 → Ctrl+C → 自动收录<br>沉浸式翻译 + Google/有道 + 本地词库 · 音标 · 词根词缀 · 排序 · CET-6 · 测绘</p>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>
