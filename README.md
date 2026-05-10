@@ -44,6 +44,16 @@ Firefox 根据版本有所不同：
 | Developer Edition / Nightly / ESR | `./install.sh` 一键安装 |
 | 正式版（需 Mozilla 签名） | `./install.sh` 会生成 XPI 并提示提交到 AMO 签名，或使用 `about:debugging` 临时加载 |
 
+> **安装 Firefox Developer Edition (Linux)**:
+> ```bash
+> wget -O /tmp/firefox-dev.tar.bz2 \
+>   'https://download.mozilla.org/?product=firefox-devedition-latest-ssl&os=linux64&lang=zh-CN'
+> sudo tar -xjf /tmp/firefox-dev.tar.bz2 -C /opt/
+> sudo ln -sf /opt/firefox/firefox /usr/local/bin/firefox-dev
+> firefox-dev --no-remote &
+> ```
+> 然后运行 `./install.sh firefox` 即可。
+
 ### 配置（可选）
 
 点击浏览器工具栏的扩展图标：
