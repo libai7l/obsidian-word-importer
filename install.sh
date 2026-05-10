@@ -1,11 +1,11 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
 # Obsidian Word Importer — 一键安装脚本
-# 支持 Chrome / Edge / Chromium / Firefox
+# 支持 Chrome / Edge / Chromium
 # 用法:
 #   ./install.sh           # 安装到所有已检测到的浏览器
 #   ./install.sh chrome    # 仅 Chrome
-#   ./install.sh firefox   # 仅 Firefox
+#   ./install.sh edge      # 仅 Edge
 #   ./install.sh all       # 所有浏览器
 # ═══════════════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -25,7 +25,8 @@ echo -e "${NC}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOST_PY="$SCRIPT_DIR/native-host/host.py"
 HOST_JSON="$SCRIPT_DIR/native-host/host.json"
-HOST_JSON_FX="$SCRIPT_DIR/native-host/host.firefox.json"
+
+
 
 declare -A BROWSER_PROCESS
 declare -A BROWSER_CONFIG_DIR
@@ -74,10 +75,7 @@ if [ "$OS" = "Linux" ]; then
     BROWSER_DISPLAY[chromium]="Chromium"
     BROWSER_HOST_TEMPLATE[chromium]="$HOST_JSON"
 
-    BROWSER_PROCESS[firefox]="firefox"
-    BROWSER_CONFIG_DIR[firefox]="$HOME/.mozilla"
-    BROWSER_DISPLAY[firefox]="Firefox"
-    BROWSER_HOST_TEMPLATE[firefox]="$HOST_JSON_FX"
+
 elif [ "$OS" = "Darwin" ]; then
     BROWSER_PROCESS[chrome]="Google Chrome"
     BROWSER_CONFIG_DIR[chrome]="$HOME/Library/Application Support/Google/Chrome"
@@ -89,10 +87,7 @@ elif [ "$OS" = "Darwin" ]; then
     BROWSER_DISPLAY[edge]="Microsoft Edge"
     BROWSER_HOST_TEMPLATE[edge]="$HOST_JSON"
 
-    BROWSER_PROCESS[firefox]="firefox"
-    BROWSER_CONFIG_DIR[firefox]="$HOME/Library/Application Support/Mozilla"
-    BROWSER_DISPLAY[firefox]="Firefox"
-    BROWSER_HOST_TEMPLATE[firefox]="$HOST_JSON_FX"
+
 else
     echo -e "${RED}不支持的操作系统: $OS${NC}"
     exit 1
@@ -165,64 +160,34 @@ for browser in "${TARGET_BROWSERS[@]}"; do
     process_name="${BROWSER_PROCESS[$browser]}"
     display_name="${BROWSER_DISPLAY[$browser]}"
     host_template="${BROWSER_HOST_TEMPLATE[$browser]}"
-    is_firefox="$([ "$browser" = "firefox" ] && echo 1 || echo 0)"
 
     echo ""
     echo "       ── ${display_name} ──"
 
     # 3a. Native Host 清单
-    if [ "$is_firefox" = "1" ]; then
-        host_dir="$config_dir/native-messaging-hosts"
-        ext_id_fx="obsidian-word-importer@libai7l.github.io"
-    else
-        host_dir="$config_dir/NativeMessagingHosts"
-        ext_id_fx="$EXT_ID"
-    fi
+    host_dir="$config_dir/NativeMessagingHosts"
+    ext_id_fx="$EXT_ID"
 
     mkdir -p "$host_dir"
     manifest_file="$host_dir/com.obsidian.wordimporter.json"
 
-    if [ "$is_firefox" = "1" ]; then
-        sed -e "s|HOST_PYTHON_PATH_PLACEHOLDER|$HOST_PY|g" \
-            "$host_template" > "$manifest_file"
-    else
-        sed -e "s|HOST_PYTHON_PATH_PLACEHOLDER|$HOST_PY|g" \
-            -e "s|EXTENSION_ID_PLACEHOLDER|$EXT_ID|g" \
-            "$host_template" > "$manifest_file"
-    fi
+    sed -e "s|HOST_PYTHON_PATH_PLACEHOLDER|$HOST_PY|g" \
+        -e "s|EXTENSION_ID_PLACEHOLDER|$EXT_ID|g" \
+        "$host_template" > "$manifest_file"
     echo "       清单: $manifest_file ✓"
 
     # 3b. 关闭浏览器
-    if [ "$is_firefox" = "1" ]; then
-        if pgrep -x "firefox" > /dev/null 2>&1 || pgrep -x "firefox-esr" > /dev/null 2>&1; then
-            echo "       正在关闭 Firefox..."
-            pkill -x firefox 2>/dev/null || pkill -x firefox-esr 2>/dev/null || true
-            sleep 2
-        fi
-    else
-        if pgrep -x "$process_name" > /dev/null 2>&1; then
-            echo "       正在关闭 ${display_name}..."
-            pkill -x "$process_name" 2>/dev/null || true
-            sleep 2
-        elif pgrep -f "$process_name" > /dev/null 2>&1; then
-            echo "       正在关闭 ${display_name}..."
-            pkill -f "$process_name" 2>/dev/null || true
-            sleep 2
-        fi
+    if pgrep -x "$process_name" > /dev/null 2>&1; then
+        echo "       正在关闭 ${display_name}..."
+        pkill -x "$process_name" 2>/dev/null || true
+        sleep 2
+    elif pgrep -f "$process_name" > /dev/null 2>&1; then
+        echo "       正在关闭 ${display_name}..."
+        pkill -f "$process_name" 2>/dev/null || true
+        sleep 2
     fi
 
-    # 3c. 注册扩展（Chrome 系注入 Preferences，Firefox 调用 register_firefox.py）
-    if [ "$is_firefox" = "1" ]; then
-        REG_SCRIPT="$SCRIPT_DIR/native-host/register_firefox.py"
-        chmod +x "$REG_SCRIPT"
-        echo "       ── 注册 Firefox 扩展 ──"
-        $PYTHON "$REG_SCRIPT" 2>&1 | while IFS= read -r line; do
-            echo "       $line"
-        done
-        if [ ${PIPESTATUS[0]} -ne 0 ]; then
-            echo "       (Firefox 正式版不支持直接安装，请参考上方提示)"
-        fi
-    else
+    # 3c. 注册扩展（注入 Preferences）
         prefs_file="$config_dir/Default/Preferences"
         secure_prefs="$config_dir/Default/Secure Preferences"
         for prefs_path in "$prefs_file" "$secure_prefs"; do
@@ -289,7 +254,6 @@ with open(prefs_path, 'w') as f:
 "
             echo "       注册: $(basename "$prefs_path") ✓"
         done
-    fi
 done
 
 # ═══════════════════════════════════════════════════════════════════════

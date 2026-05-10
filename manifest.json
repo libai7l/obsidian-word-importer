@@ -3,12 +3,7 @@
   "name": "Obsidian Word Importer",
   "version": "2.1",
   "description": "选中英文单词 Ctrl+C → 自动收录到 Obsidian 词库，翻译+发音+词根词缀",
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "obsidian-word-importer@libai7l.github.io",
-      "strict_min_version": "121.0"
-    }
-  },
+
   "permissions": [
     "nativeMessaging",
     "notifications",

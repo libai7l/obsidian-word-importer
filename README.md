@@ -1,6 +1,6 @@
 # Obsidian Word Importer
 
-选中英文单词/词组 → Ctrl+C → 自动收录到 Obsidian 词库。支持 Chrome / Firefox / Edge。
+选中英文单词/词组 → Ctrl+C → 自动收录到 Obsidian 词库。支持 Chrome / Edge。
 
 ![](icons/icon128.png)
 
@@ -32,27 +32,10 @@ chmod +x install.sh && ./install.sh
 ./install.sh          # 自动检测所有已安装浏览器
 ./install.sh chrome   # 仅 Chrome
 ./install.sh edge     # 仅 Edge
-./install.sh firefox  # 仅 Firefox
 ./install.sh all      # 全部强制安装
 ```
 
-Chromium 系（Chrome/Edge）重启即可使用。
-Firefox 根据版本有所不同：
-
-| Firefox 版本 | 安装方式 |
-|-------------|---------|
-| Developer Edition / Nightly / ESR | `./install.sh` 一键安装 |
-| 正式版（需 Mozilla 签名） | `./install.sh` 会生成 XPI 并提示提交到 AMO 签名，或使用 `about:debugging` 临时加载 |
-
-> **安装 Firefox Developer Edition (Linux)**:
-> ```bash
-> wget -O /tmp/firefox-dev.tar.xz \
->   'https://download.mozilla.org/?product=firefox-devedition-latest-ssl&os=linux64&lang=zh-CN'
-> sudo tar -xf /tmp/firefox-dev.tar.xz -C /opt/
-> sudo ln -sf /opt/firefox/firefox /usr/local/bin/firefox-dev
-> firefox-dev --no-remote &
-> ```
-> 然后运行 `./install.sh firefox` 即可。
+Chrome/Edge/Chromium 重启即可使用。
 
 ### 配置（可选）
 
@@ -138,8 +121,6 @@ Firefox 根据版本有所不同：
 | Google Chrome | ✓ | ✓ | ✓ |
 | Microsoft Edge | ✓ | ✓ | ✓ |
 | Chromium | ✓ | ✓ | ✓ |
-| Firefox Dev Edition | ✓ | ✓ | ✓ |
-| Firefox 正式版 | 需签名或临时加载 | ✓ | ✓ |
 
 ## 技术架构
 
@@ -167,7 +148,7 @@ Firefox 根据版本有所不同：
 ```
 obsidian-word-importer/
 ├── install.sh              # 一键安装脚本
-├── manifest.json           # MV3 扩展清单 (Chrome/Firefox/Edge)
+├── manifest.json           # MV3 扩展清单 (Chrome/Edge)
 ├── background.js           # Service Worker
 ├── content.js              # 网页内容脚本
 ├── .gitignore
@@ -181,8 +162,7 @@ obsidian-word-importer/
 │   └── icon128.png
 ├── native-host/
 │   ├── host.py             # Python Native Host（翻译/写入/排序）
-│   ├── host.json           # Chrome/Edge Native Host 清单模板
-│   └── host.firefox.json   # Firefox Native Host 清单模板
+│   └── host.json           # Chrome/Edge Native Host 清单模板
 └── README.md
 ```
 
