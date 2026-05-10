@@ -47,10 +47,7 @@ if (-not (Test-Path $HostBat)) {
 }
 
 # 使用绝对路径重写 host.bat，Chrome 进程环境可能没有完整 PATH
-$HostBatContent = @"
-@echo off
-"$PythonPath" "%~dp0host.py" %*
-"@
+$HostBatContent = '@echo off' + "`r`n" + '"' + $PythonPath + '" "%~dp0host.py" %*'
 Set-Content -Path $HostBat -Value $HostBatContent -Encoding ASCII
 Write-Host "       host.bat -> $PythonPath" -ForegroundColor Gray
 
