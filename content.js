@@ -54,17 +54,17 @@
           if (hasChinese(text)) return text;
         }
         // Also check if the sibling ITSELF contains Chinese (e.g., a <p> with Chinese text)
-        if (hasChinese(sibling.textContent) && sibling.textContent.trim().length < 1000) {
+        if (hasChinese(sibling.textContent) && sibling.textContent.trim().length < 1000 && isValidTranslation(sibling.textContent.trim())) {
           return sibling.textContent.trim();
         }
         sibling = sibling.nextElementSibling;
       }
     }
 
-    // Fallback: first Chinese text from any Immersive Translate element
+    // Fallback: first valid Chinese text from any Immersive Translate element
     for (const el of targets) {
       const text = el.textContent.trim();
-      if (hasChinese(text)) return text;
+      if (isValidTranslation(text)) return text;
     }
 
     // Last resort
@@ -78,25 +78,26 @@
     let node = selection.getRangeAt(0).startContainer;
     if (node && node.nodeType === 3) node = node.parentElement;
 
+    // Skip navigation, header, footer, sidebar elements
+    const skipTags = /^(NAV|HEADER|FOOTER|ASIDE|MENU|BUTTON|INPUT|SELECT|TEXTAREA|LABEL)$/;
+
     let parent = node;
     for (let i = 0; i < 8 && parent; i++) {
       const all = parent.querySelectorAll("p, div, span, font, li");
       for (const el of all) {
+        if (skipTags.test(el.tagName) || el.closest("nav, header, footer, aside, [role='navigation'], [role='banner']")) continue;
         const text = el.textContent.trim();
-        if (text.length > 3 && text.length < 500 && hasChinese(text)) {
-          return text;
-        }
+        if (isValidTranslation(text)) return text;
       }
       parent = parent.parentElement;
     }
 
-    // Broad scan: first Chinese text on the page
+    // Broad scan: skip UI areas
     const all = document.querySelectorAll("p, div, span, font");
     for (const el of all) {
+      if (skipTags.test(el.tagName) || el.closest("nav, header, footer, aside, [role='navigation'], [role='banner']")) continue;
       const text = el.textContent.trim();
-      if (text.length > 3 && text.length < 500 && hasChinese(text)) {
-        return text;
-      }
+      if (isValidTranslation(text)) return text;
     }
     return null;
   }
@@ -108,6 +109,21 @@
 
   function hasChinese(text) {
     return /[一-鿿]/.test(text);
+  }
+
+  // UI keywords that are NOT valid translations
+  const UI_NOISE = /^(主题|设置|登录|注册|关于|搜索|首页|返回|更多|评论|分享|点赞|收藏|下载|上传|提交|取消|确定|保存|编辑|删除|新建|打开|关闭|菜单|导航|个人|退出|语言|帮助|用户|密码|账号|邮箱|手机|验证码|提交|重置)$/;
+
+  function isValidTranslation(text) {
+    const t = text.trim();
+    // Must be at least 8 Chinese+punctuation chars
+    const cnChars = t.replace(/[\s\d\w\p{P}]/gu, "");
+    if (cnChars.length < 4) return false;
+    // Must not be a UI keyword
+    if (UI_NOISE.test(t)) return false;
+    // Must contain at least some actual semantic content (not just single char repeated)
+    if (new Set(cnChars).size < 2) return false;
+    return true;
   }
 
   // ── Copy event handler ──

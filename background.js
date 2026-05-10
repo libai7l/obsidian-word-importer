@@ -169,13 +169,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 });
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: "add-to-obsidian",
-    title: "添加到 Obsidian 词库",
-    contexts: ["selection"],
+function ensureContextMenu() {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "add-to-obsidian",
+      title: "添加到 Obsidian 词库",
+      contexts: ["selection"],
+    });
   });
-});
+}
+
+chrome.runtime.onInstalled.addListener(ensureContextMenu);
+chrome.runtime.onStartup.addListener(ensureContextMenu);
+// Also create immediately on service worker start
+ensureContextMenu();
 
 chrome.contextMenus.onClicked.addListener((info, _tab) => {
   if (info.menuItemId === "add-to-obsidian" && info.selectionText) {

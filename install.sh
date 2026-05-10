@@ -1,11 +1,12 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
 # Obsidian Word Importer — 一键安装脚本
-# 支持 Chrome / Edge / Chromium
+# 支持 Chrome / Edge / Chromium / Firefox
 # 用法:
-#   ./install.sh          # 安装到所有已检测到的浏览器
-#   ./install.sh chrome   # 仅 Chrome
-#   ./install.sh edge     # 仅 Edge
+#   ./install.sh           # 安装到所有已检测到的浏览器
+#   ./install.sh chrome    # 仅 Chrome
+#   ./install.sh firefox   # 仅 Firefox
+#   ./install.sh all       # 所有浏览器
 # ═══════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -24,6 +25,12 @@ echo -e "${NC}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOST_PY="$SCRIPT_DIR/native-host/host.py"
 HOST_JSON="$SCRIPT_DIR/native-host/host.json"
+HOST_JSON_FX="$SCRIPT_DIR/native-host/host.firefox.json"
+
+declare -A BROWSER_PROCESS
+declare -A BROWSER_CONFIG_DIR
+declare -A BROWSER_DISPLAY
+declare -A BROWSER_HOST_TEMPLATE
 
 # ═══════════════════════════════════════════════════════════════════════
 # 1. 检测环境
@@ -55,22 +62,37 @@ if [ "$OS" = "Linux" ]; then
     BROWSER_PROCESS[chrome]="chrome"
     BROWSER_CONFIG_DIR[chrome]="$HOME/.config/google-chrome"
     BROWSER_DISPLAY[chrome]="Google Chrome"
+    BROWSER_HOST_TEMPLATE[chrome]="$HOST_JSON"
 
     BROWSER_PROCESS[edge]="microsoft-edge"
     BROWSER_CONFIG_DIR[edge]="$HOME/.config/microsoft-edge"
     BROWSER_DISPLAY[edge]="Microsoft Edge"
+    BROWSER_HOST_TEMPLATE[edge]="$HOST_JSON"
 
     BROWSER_PROCESS[chromium]="chromium"
     BROWSER_CONFIG_DIR[chromium]="$HOME/.config/chromium"
     BROWSER_DISPLAY[chromium]="Chromium"
+    BROWSER_HOST_TEMPLATE[chromium]="$HOST_JSON"
+
+    BROWSER_PROCESS[firefox]="firefox"
+    BROWSER_CONFIG_DIR[firefox]="$HOME/.mozilla"
+    BROWSER_DISPLAY[firefox]="Firefox"
+    BROWSER_HOST_TEMPLATE[firefox]="$HOST_JSON_FX"
 elif [ "$OS" = "Darwin" ]; then
     BROWSER_PROCESS[chrome]="Google Chrome"
     BROWSER_CONFIG_DIR[chrome]="$HOME/Library/Application Support/Google/Chrome"
     BROWSER_DISPLAY[chrome]="Google Chrome"
+    BROWSER_HOST_TEMPLATE[chrome]="$HOST_JSON"
 
     BROWSER_PROCESS[edge]="Microsoft Edge"
     BROWSER_CONFIG_DIR[edge]="$HOME/Library/Application Support/Microsoft Edge"
     BROWSER_DISPLAY[edge]="Microsoft Edge"
+    BROWSER_HOST_TEMPLATE[edge]="$HOST_JSON"
+
+    BROWSER_PROCESS[firefox]="firefox"
+    BROWSER_CONFIG_DIR[firefox]="$HOME/Library/Application Support/Mozilla"
+    BROWSER_DISPLAY[firefox]="Firefox"
+    BROWSER_HOST_TEMPLATE[firefox]="$HOST_JSON_FX"
 else
     echo -e "${RED}不支持的操作系统: $OS${NC}"
     exit 1
@@ -142,39 +164,67 @@ for browser in "${TARGET_BROWSERS[@]}"; do
     config_dir="${BROWSER_CONFIG_DIR[$browser]}"
     process_name="${BROWSER_PROCESS[$browser]}"
     display_name="${BROWSER_DISPLAY[$browser]}"
-    host_dir="$config_dir/NativeMessagingHosts"
-    prefs_file="$config_dir/Default/Preferences"
-    secure_prefs="$config_dir/Default/Secure Preferences"
+    host_template="${BROWSER_HOST_TEMPLATE[$browser]}"
+    is_firefox="$([ "$browser" = "firefox" ] && echo 1 || echo 0)"
 
     echo ""
     echo "       ── ${display_name} ──"
 
     # 3a. Native Host 清单
+    if [ "$is_firefox" = "1" ]; then
+        host_dir="$config_dir/native-messaging-hosts"
+        ext_id_fx="obsidian-word-importer@libai7l.github.io"
+    else
+        host_dir="$config_dir/NativeMessagingHosts"
+        ext_id_fx="$EXT_ID"
+    fi
+
     mkdir -p "$host_dir"
     manifest_file="$host_dir/com.obsidian.wordimporter.json"
-    sed -e "s|HOST_PYTHON_PATH_PLACEHOLDER|$HOST_PY|g" \
-        -e "s|EXTENSION_ID_PLACEHOLDER|$EXT_ID|g" \
-        "$HOST_JSON" > "$manifest_file"
+
+    if [ "$is_firefox" = "1" ]; then
+        sed -e "s|HOST_PYTHON_PATH_PLACEHOLDER|$HOST_PY|g" \
+            "$host_template" > "$manifest_file"
+    else
+        sed -e "s|HOST_PYTHON_PATH_PLACEHOLDER|$HOST_PY|g" \
+            -e "s|EXTENSION_ID_PLACEHOLDER|$EXT_ID|g" \
+            "$host_template" > "$manifest_file"
+    fi
     echo "       清单: $manifest_file ✓"
 
     # 3b. 关闭浏览器
-    if pgrep -x "$process_name" > /dev/null 2>&1; then
-        echo "       正在关闭 ${display_name}..."
-        pkill -x "$process_name" 2>/dev/null || true
-        sleep 2
-    elif pgrep -f "$process_name" > /dev/null 2>&1; then
-        echo "       正在关闭 ${display_name}..."
-        pkill -f "$process_name" 2>/dev/null || true
-        sleep 2
+    if [ "$is_firefox" = "1" ]; then
+        if pgrep -x "firefox" > /dev/null 2>&1 || pgrep -x "firefox-esr" > /dev/null 2>&1; then
+            echo "       正在关闭 Firefox..."
+            pkill -x firefox 2>/dev/null || pkill -x firefox-esr 2>/dev/null || true
+            sleep 2
+        fi
+    else
+        if pgrep -x "$process_name" > /dev/null 2>&1; then
+            echo "       正在关闭 ${display_name}..."
+            pkill -x "$process_name" 2>/dev/null || true
+            sleep 2
+        elif pgrep -f "$process_name" > /dev/null 2>&1; then
+            echo "       正在关闭 ${display_name}..."
+            pkill -f "$process_name" 2>/dev/null || true
+            sleep 2
+        fi
     fi
 
-    # 3c. 注册扩展到 Preferences
-    for prefs_path in "$prefs_file" "$secure_prefs"; do
-        if [ ! -f "$prefs_path" ]; then
-            continue
-        fi
+    # 3c. 注册扩展（Chrome 系注入 Preferences，Firefox 提示手动加载）
+    if [ "$is_firefox" = "1" ]; then
+        echo "       提示: 请在 Firefox 中手动加载扩展:"
+        echo "         about:debugging → 此 Firefox → 加载临时附加组件"
+        echo "         选择文件: $SCRIPT_DIR/manifest.json"
+    else
+        prefs_file="$config_dir/Default/Preferences"
+        secure_prefs="$config_dir/Default/Secure Preferences"
+        for prefs_path in "$prefs_file" "$secure_prefs"; do
+            if [ ! -f "$prefs_path" ]; then
+                continue
+            fi
 
-        $PYTHON -c "
+            $PYTHON -c "
 import json
 
 prefs_path = '''$prefs_path'''
@@ -231,8 +281,9 @@ prefs.pop('super_mac', None)
 with open(prefs_path, 'w') as f:
     json.dump(prefs, f, indent=2, ensure_ascii=False)
 "
-        echo "       注册: $(basename "$prefs_path") ✓"
-    done
+            echo "       注册: $(basename "$prefs_path") ✓"
+        done
+    fi
 done
 
 # ═══════════════════════════════════════════════════════════════════════

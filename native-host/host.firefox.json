@@ -1,0 +1,9 @@
+{
+  "name": "com.obsidian.wordimporter",
+  "description": "Obsidian Word Importer Native Host",
+  "path": "HOST_PYTHON_PATH_PLACEHOLDER",
+  "type": "stdio",
+  "allowed_extensions": [
+    "obsidian-word-importer@libai7l.github.io"
+  ]
+}

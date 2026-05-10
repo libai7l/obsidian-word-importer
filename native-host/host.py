@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Obsidian Word Importer v2.0 - Native Messaging Host
-CET-6 + 测绘专业词汇 | 音标发音 | 词根词缀分析 | 词组支持 | 按字母排序
+Obsidian Word Importer v2.1 - Native Messaging Host
+CET-6 + 通用科研词汇 | 音标发音 | 词根词缀分析 | 词组支持 | 按字母排序
 """
 import sys, json, struct, os, re, urllib.request, urllib.error
 from pathlib import Path
