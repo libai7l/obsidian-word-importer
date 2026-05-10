@@ -428,7 +428,7 @@ function detectObsidianVault() {
 }
 
 function readEntries(filepath) {
-  // Returns [{word, meaning}] — meaning is the full block after ### line
+  // Returns [{word, meaning}] — word is extracted, meaning is the full block including ### header
   if (!fs.existsSync(filepath)) return [];
   const content = fs.readFileSync(filepath, 'utf-8');
   const entries = [];
@@ -439,8 +439,7 @@ function readEntries(filepath) {
     const nl = trimmed.indexOf('\n');
     const header = nl > 0 ? trimmed.substring(4, nl).trim() : trimmed.substring(4).trim();
     const word = header.split(/[\s/]/)[0].toLowerCase();
-    const meaning = nl > 0 ? trimmed.substring(nl + 1).trim() : '';
-    entries.push({ word, meaning });
+    entries.push({ word, meaning: trimmed });
   }
   return entries;
 }
