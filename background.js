@@ -25,22 +25,19 @@ async function getCache(word) {
     const req = store.get(word);
     req.onsuccess = () => {
       const entry = req.result;
-      if (entry && Date.now() - entry.ts < CACHE_TTL_MS) {
-        resolve(entry);
-      } else {
-        resolve(null);
-      }
+      if (entry && Date.now() - entry.ts < CACHE_TTL_MS) resolve(entry);
+      else resolve(null);
     };
     req.onerror = () => resolve(null);
   });
 }
 
-async function setCache(word, meaning) {
+async function setCache(word, pronunciation, pos, meaning, etymology) {
   const db = await openCache();
   return new Promise((resolve) => {
     const tx = db.transaction(CACHE_STORE, "readwrite");
     const store = tx.objectStore(CACHE_STORE);
-    store.put({ word, meaning, ts: Date.now() });
+    store.put({ word, pronunciation, pos, meaning, etymology, ts: Date.now() });
     tx.oncomplete = () => resolve();
   });
 }
@@ -80,6 +77,15 @@ function showNotification(title, message) {
   });
 }
 
+function buildTitle(word, pronunciation) {
+  return pronunciation ? `${word} ${pronunciation}` : word;
+}
+
+function buildMessage(pos, meaning, etymology) {
+  const tag = pos ? `[${pos}] ${meaning}` : meaning;
+  return etymology ? `${tag}\n${etymology}` : tag;
+}
+
 async function processWord(word, pageTranslation) {
   const settings = await getSettings();
 
@@ -95,7 +101,10 @@ async function processWord(word, pageTranslation) {
   const cached = await getCache(word);
   if (cached) {
     if (settings.notifications_enabled) {
-      showNotification("已存在: " + word, cached.meaning);
+      showNotification(
+        "\u{1F4CC} 已存在: " + buildTitle(word, cached.pronunciation),
+        buildMessage(cached.pos, cached.meaning, cached.etymology)
+      );
     }
     return;
   }
@@ -112,23 +121,31 @@ async function processWord(word, pageTranslation) {
     }
 
     if (response.status === "ok") {
-      await setCache(word, response.meaning);
+      await setCache(word, response.pronunciation, response.pos,
+                     response.meaning, response.etymology);
       if (settings.notifications_enabled) {
-        showNotification("已收录: " + word, response.meaning);
+        showNotification(
+          "✅ 已收录: " + buildTitle(word, response.pronunciation),
+          buildMessage(response.pos, response.meaning, response.etymology)
+        );
       }
     } else if (response.status === "exists") {
-      await setCache(word, response.meaning);
+      await setCache(word, response.pronunciation, response.pos,
+                     response.meaning, response.etymology);
       if (settings.notifications_enabled) {
-        showNotification("已存在: " + word, response.meaning);
+        showNotification(
+          "\u{1F4CC} 已存在: " + buildTitle(word, response.pronunciation),
+          buildMessage(response.pos, response.meaning, response.etymology)
+        );
       }
     } else if (response.status === "error") {
       if (settings.notifications_enabled) {
-        showNotification("收录失败: " + word, response.message);
+        showNotification("❌ 收录失败: " + word, response.message);
       }
     }
   } catch (err) {
     if (settings.notifications_enabled) {
-      showNotification("收录失败: " + word, err.message);
+      showNotification("❌ 收录失败: " + word, err.message);
     }
   }
 }

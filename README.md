@@ -7,6 +7,8 @@
 - **一键收录**: 在任意网页选中英文单词或词组，Ctrl+C 即自动查询并写入 Obsidian
 - **沉浸式翻译优先**: 如果页面上已启用 [沉浸式翻译](https://immersivetranslate.com/)（全页双语模式），直接提取页面上的中文翻译作为释义
 - **多 API 兜底**: 沉浸式翻译 → Google 翻译 / 有道词典
+- **IPA 音标 + 词性**: 通过 Free Dictionary API 获取标准音标和词性
+- **词根词缀分析**: 自动拆解前缀、词根、后缀，辅助记忆
 - **按字母排序**: 单词自动按字母顺序插入文件
 - **文件自动轮转**: 满 100 个单词自动新建 `论文单词1.md`、`论文单词2.md` …
 - **桌面通知**: 3 秒自动消失，收录结果即时可见
@@ -72,10 +74,6 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 | 桌面通知 | 是否弹出桌面通知 | 开启 |
 
 > **注意**: 如果未配置 Vault 路径，插件会自动扫描系统中已安装的 Obsidian Vault。
->
-> **Windows 路径示例**: `C:\Users\用户名\Documents\Obsidian Vault`
->
-> **Ubuntu 路径示例**: `/home/用户名/文档/Obsidian Vault`
 
 ## 使用
 
@@ -94,19 +92,18 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 ```markdown
 # 论文词汇表
 
-### abandon
-放弃；抛弃
+### geodesy /dʒiːˈɒdɪsi/
+[n.] 大地测量学
+← *前缀: geo(地球/土地) | 词根: desy(划分)*
 
-### geodesy
-大地测量学
-
-### survey methodology
-调查方法
+### ubiquitous /juːˈbɪk.wɪ.təs/
+[adj.] 无处不在的
+← *前缀: ubi(到处) | 后缀: ous(有…性质的)*
 ```
 
-- `###` 标题：单词（较大字体）
-- 第二行：释义（正常字体）
-- 单词之间空行分隔
+- `###` 标题：单词 + 音标（较大字体）
+- 第二行：`[词性] 释义`（正常字体）
+- 第三行：词根词缀分析（斜体小字）
 - 满 100 个单词自动轮转到 `论文单词1.md`、`论文单词2.md` …
 
 ## 翻译优先级
@@ -119,13 +116,9 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 另一 API 自动兜底
 ```
 
-页面翻译提取会智能过滤导航栏、菜单、按钮等 UI 元素，确保不会误用「主题」「设置」等短文本。
+音标和词性通过 Free Dictionary API 获取，词根词缀由规则引擎分析。
 
-## 支持浏览器
-
-| 浏览器 | Ubuntu | Windows | 右键菜单 | 桌面通知 |
-|--------|--------|---------|----------|----------|
-| Google Chrome | ✓ | ✓ | ✓ | ✓ |
+页面翻译提取会智能过滤导航栏、菜单、按钮等 UI 元素。
 
 ## 技术架构
 
@@ -135,17 +128,18 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 │  (网页复制)   │     │  (Service     │     │  (Node.js      │
 │              │     │   Worker)     │     │   Native Host) │
 │  · 捕获 Ctrl+C│     │               │     │               │
-│  · 提取沉浸式  │     │  · IndexedDB  │     │  · 翻译查询    │
-│    翻译内容   │     │    缓存       │     │  · 文件写入    │
-│  · 过滤UI噪音 │     │  · 通知/设置   │     │  · 排序去重    │
-└─────────────┘     └──────────────┘     └───────────────┘
-       ▲                                       │
-       │         Native Messaging              │
-       │         (stdio + JSON)                ▼
-       │                               ┌───────────────┐
-       └───────────────────────────────│  Obsidian     │
-                                       │  Vault (.md)  │
-                                       └───────────────┘
+│  · 提取沉浸式  │     │  · IndexedDB  │     │  · 翻译 API    │
+│    翻译内容   │     │    缓存       │     │  · 词典 API    │
+│  · 过滤UI噪音 │     │  · 通知/设置   │     │  · 词根词缀    │
+└─────────────┘     └──────────────┘     │  · 文件写入    │
+       ▲                                       │  · 排序去重    │
+       │         Native Messaging              └───────────────┘
+       │         (stdio + JSON)                       │
+       │                                              ▼
+       │                                     ┌───────────────┐
+       └─────────────────────────────────────│  Obsidian     │
+                                             │  Vault (.md)  │
+                                             └───────────────┘
 ```
 
 ## 文件结构
@@ -167,7 +161,7 @@ obsidian-word-importer/
 │   ├── icon48.png
 │   └── icon128.png
 ├── native-host/
-│   ├── host.js              # Node.js Native Host（翻译/写入/排序）
+│   ├── host.js              # Node.js Native Host（翻译/词典/词根/写入）
 │   ├── host.json            # Native Host 清单模板
 │   └── host.bat             # Windows Native Host 启动器
 └── README.md
