@@ -19,24 +19,13 @@ Chrome 浏览器扩展 —— 选中英文单词/词组 → Ctrl+C 自动收录�
 
 ## 安装
 
-### 1. 安装 Native Host
-
 ```bash
-cd native-host
-chmod +x install.sh
-./install.sh
+chmod +x install.sh && ./install.sh
 ```
 
-脚本会自动检测 Python 3、生成 Chrome Native Messaging 清单并安装。
+**一条命令完成所有安装**：Native Host 清单 + 扩展注册 + 权限配置。重启 Chrome 即可使用。
 
-### 2. 加载扩展
-
-1. 打开 `chrome://extensions`
-2. 开启右上角「开发者模式」
-3. 点击「加载已解压的扩展程序」
-4. 选择本仓库根目录（包含 `manifest.json` 的目录）
-
-### 3. 配置
+### 配置（可选）
 
 点击浏览器工具栏的扩展图标：
 
