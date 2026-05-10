@@ -114,6 +114,45 @@
   // UI keywords that are NOT valid translations
   const UI_NOISE = /^(主题|设置|登录|注册|关于|搜索|首页|返回|更多|评论|分享|点赞|收藏|下载|上传|提交|取消|确定|保存|编辑|删除|新建|打开|关闭|菜单|导航|个人|退出|语言|帮助|用户|密码|账号|邮箱|手机|验证码|提交|重置)$/;
 
+  // Garbage patterns: cookie banners, privacy notices, navigation UI, etc.
+  const GARBAGE_PATTERNS = [
+    /Cookie/i,
+    /隐私政策/,
+    /接受.*cookie/i,
+    /cookie.*偏好/i,
+    /个性化.*广告/,
+    /有针对性的广告/,
+    /定制.*广告/,
+    /新窗(口|中)打开/,
+    /打开外部网站/,
+    /本网站.*cookie/i,
+    /我们使用.*cookie/i,
+    /使用cookie/i,
+    /数据保护/,
+    /数据安全/,
+    /同意并继续/,
+    /点击.*接受/,
+    /条款.*条件/,
+    /服务条款/,
+    /隐私.*条款/,
+    /隐私.*设置/,
+    /了解更多/,
+    /阅读更多/,
+    /查看详情/,
+    /广告投放/,
+    /广告商/,
+    /第三方.*广告/,
+    /行为.*广告/,
+    /个性化.*内容/,
+    /网站功能/,
+    /基本功能/,
+    /社交.*插件/,
+    /分析.*个性化/,
+    /数据处理/,
+    /数据收集/,
+    /跟踪.*技术/,
+  ];
+
   function isValidTranslation(text) {
     const t = text.trim();
     // Must be at least 8 Chinese+punctuation chars
@@ -123,6 +162,20 @@
     if (UI_NOISE.test(t)) return false;
     // Must contain at least some actual semantic content (not just single char repeated)
     if (new Set(cnChars).size < 2) return false;
+    // Reject garbage (cookie banners, privacy notices, etc.)
+    for (const pattern of GARBAGE_PATTERNS) {
+      if (pattern.test(t)) return false;
+    }
+    // Reject text with too many URLs or domain references
+    const urlCount = (t.match(/https?:\/\/|www\.|\.com|\.cn|\.org/g) || []).length;
+    if (urlCount >= 1 && cnChars.length < 30) return false;
+    // Reject text that looks like a footer/nav with multiple short fragments
+    const shortFragments = t.split(/\s+/).filter(s => s.length > 1 && s.length < 5);
+    if (shortFragments.length > 5 && cnChars.length < 20) return false;
+    // Reject text where a single regex keyword dominates
+    const garbageWords = /(接受|拒绝|订阅|关注|分享到|转发|收藏|点赞|举报|反馈)/g;
+    const garbageCount = (t.match(garbageWords) || []).length;
+    if (garbageCount >= 3 && cnChars.length < 30) return false;
     return true;
   }
 

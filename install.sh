@@ -211,11 +211,17 @@ for browser in "${TARGET_BROWSERS[@]}"; do
         fi
     fi
 
-    # 3c. 注册扩展（Chrome 系注入 Preferences，Firefox 提示手动加载）
+    # 3c. 注册扩展（Chrome 系注入 Preferences，Firefox 调用 register_firefox.py）
     if [ "$is_firefox" = "1" ]; then
-        echo "       提示: 请在 Firefox 中手动加载扩展:"
-        echo "         about:debugging → 此 Firefox → 加载临时附加组件"
-        echo "         选择文件: $SCRIPT_DIR/manifest.json"
+        REG_SCRIPT="$SCRIPT_DIR/native-host/register_firefox.py"
+        chmod +x "$REG_SCRIPT"
+        if $PYTHON "$REG_SCRIPT" 2>/dev/null; then
+            echo "       注册: extensions.json ✓"
+        else
+            echo -e "       ${RED}Firefox 注册失败，请手动加载:${NC}"
+            echo "         about:debugging → 此 Firefox → 加载临时附加组件"
+            echo "         选择文件: $SCRIPT_DIR/manifest.json"
+        fi
     else
         prefs_file="$config_dir/Default/Preferences"
         secure_prefs="$config_dir/Default/Secure Preferences"
