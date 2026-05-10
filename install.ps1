@@ -4,6 +4,9 @@
 #   powershell -ExecutionPolicy Bypass -File install.ps1
 # ═══════════════════════════════════════════════════════════════════════
 
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $HostDir   = Join-Path $ScriptDir "native-host"
 $HostBat   = Join-Path $HostDir "host.bat"
@@ -97,7 +100,7 @@ Write-Host "       清单: $manifestFile" -ForegroundColor Green
 # 注册表项（双保险）
 $regPath = "HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.obsidian.wordimporter"
 New-Item -Path $regPath -Force | Out-Null
-Set-ItemProperty -Path $regPath -Name "(Default)" -Value $manifestFile -Type String -Force
+Set-Item -Path $regPath -Value $manifestFile -Force
 Write-Host "       注册表: HKCU\...\NativeMessagingHosts\com.obsidian.wordimporter" -ForegroundColor Green
 
 # ═══════════════════════════════════════════════════════════════════════
