@@ -4,9 +4,6 @@
 #   powershell -ExecutionPolicy Bypass -File install.ps1
 # ═══════════════════════════════════════════════════════════════════════
 
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.Encoding]::UTF8
-
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $HostDir   = Join-Path $ScriptDir "native-host"
 $HostBat   = Join-Path $HostDir "host.bat"
