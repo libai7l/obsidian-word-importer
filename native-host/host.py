@@ -1002,23 +1002,51 @@ def query_youdao(word):
 
 
 def detect_obsidian_vault():
-    """Auto-detect Obsidian vault in common locations."""
-    import glob as glob_mod
+    """Auto-detect Obsidian vault in common locations (cross-platform)."""
     home = os.path.expanduser("~")
-    # Common vault locations
-    candidates = [
-        os.path.join(home, "文档", "Obsidian Vault"),
-        os.path.join(home, "Documents", "Obsidian Vault"),
-        os.path.join(home, "Obsidian Vault"),
-    ]
-    # Search for .obsidian directories (limit depth for speed)
-    for root, dirs, _ in os.walk(home):
-        if ".obsidian" in dirs:
-            candidates.append(root)
-        # Limit to 2 levels deep
-        depth = root.replace(home, "").count(os.sep)
-        if depth >= 3:
-            dirs.clear()
+    candidates = []
+
+    # Common vault names
+    vault_names = ["Obsidian Vault", "obsidian", "notes", "Notes", "vault"]
+
+    if os.name == "nt":
+        # Windows: check Documents, OneDrive, Desktop, home
+        roots = [
+            home,
+            os.path.join(home, "Documents"),
+            os.path.join(home, "OneDrive", "Documents"),
+            os.path.join(home, "Desktop"),
+        ]
+        for root in roots:
+            if os.path.isdir(root):
+                for name in vault_names:
+                    p = os.path.join(root, name)
+                    if os.path.isdir(p):
+                        candidates.append(p)
+                # Also check one level deep
+                try:
+                    for entry in os.listdir(root):
+                        full = os.path.join(root, entry)
+                        if os.path.isdir(full):
+                            if os.path.isdir(os.path.join(full, ".obsidian")):
+                                candidates.append(full)
+                except PermissionError:
+                    pass
+    else:
+        # Linux/macOS: check common locations
+        candidates = [
+            os.path.join(home, "文档", "Obsidian Vault"),
+            os.path.join(home, "Documents", "Obsidian Vault"),
+            os.path.join(home, "Obsidian Vault"),
+        ]
+        # Walk home directory (limited depth)
+        for root, dirs, _ in os.walk(home):
+            if ".obsidian" in dirs:
+                candidates.append(root)
+            depth = root.replace(home, "").count(os.sep)
+            if depth >= 3:
+                dirs.clear()
+
     for path in candidates:
         if os.path.isdir(path) and os.path.isdir(os.path.join(path, ".obsidian")):
             return path

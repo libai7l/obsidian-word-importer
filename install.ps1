@@ -4,7 +4,6 @@
 # 用法:
 #   powershell -ExecutionPolicy Bypass -File install.ps1
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -Browser chrome
-#   powershell -ExecutionPolicy Bypass -File install.ps1 -Browser edge
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -Browser all
 # ═══════════════════════════════════════════════════════════════════════
 param(
@@ -12,7 +11,7 @@ param(
 )
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$HostPy = Join-Path $ScriptDir "native-host\host.py"
+$HostBat = Join-Path $ScriptDir "native-host\host.bat"
 $HostJson = Join-Path $ScriptDir "native-host\host.json"
 
 Write-Host ""
@@ -43,6 +42,12 @@ foreach ($cmd in @("python", "python3", "py")) {
 if (-not $Python) {
     Write-Host "错误: 未找到 Python 3，请先安装 Python" -ForegroundColor Red
     Write-Host "下载: https://www.python.org/downloads/" -ForegroundColor Red
+    exit 1
+}
+
+# 验证 host.bat 存在
+if (-not (Test-Path $HostBat)) {
+    Write-Host "错误: 未找到 native-host\host.bat" -ForegroundColor Red
     exit 1
 }
 
@@ -140,18 +145,18 @@ foreach ($b in $TargetBrowsers) {
     Write-Host ""
     Write-Host "       --- $displayName ---"
 
-    # Native Host 清单目录
+    # 生成 Native Host 清单
+    $hostJsonContent = Get-Content $HostJson -Raw -Encoding UTF8
+    $hostJsonContent = $hostJsonContent.Replace("HOST_PYTHON_PATH_PLACEHOLDER", $HostBat.Replace("\", "\\"))
+    $hostJsonContent = $hostJsonContent.Replace("EXTENSION_ID_PLACEHOLDER", $ExtId)
+
+    # 写入 NativeMessagingHosts 目录
     $hostDir = Join-Path $configDir "NativeMessagingHosts"
     if (-not (Test-Path $hostDir)) {
         New-Item -ItemType Directory -Path $hostDir -Force | Out-Null
     }
 
     $manifestFile = Join-Path $hostDir "com.obsidian.wordimporter.json"
-
-    # 生成清单
-    $hostJsonContent = Get-Content $HostJson -Raw -Encoding UTF8
-    $hostJsonContent = $hostJsonContent.Replace("HOST_PYTHON_PATH_PLACEHOLDER", $HostPy.Replace("\", "\\"))
-    $hostJsonContent = $hostJsonContent.Replace("EXTENSION_ID_PLACEHOLDER", $ExtId)
     Set-Content -Path $manifestFile -Value $hostJsonContent -Encoding UTF8
     Write-Host "       清单: $manifestFile" -ForegroundColor Green
 
@@ -250,7 +255,7 @@ foreach ($b in $TargetBrowsers) {
 }
 Write-Host ""
 Write-Host "验证安装:"
-Write-Host "  打开浏览器 -> 访问 chrome://extensions （Edge: edge://extensions）"
+Write-Host "  浏览器 → 访问 chrome://extensions（Edge: edge://extensions）"
 Write-Host "  确认 [Obsidian Word Importer] 已启用"
 Write-Host ""
 Write-Host "使用: 选中英文单词 -> Ctrl+C -> 自动收录到 Obsidian"
