@@ -215,12 +215,12 @@ for browser in "${TARGET_BROWSERS[@]}"; do
     if [ "$is_firefox" = "1" ]; then
         REG_SCRIPT="$SCRIPT_DIR/native-host/register_firefox.py"
         chmod +x "$REG_SCRIPT"
-        if $PYTHON "$REG_SCRIPT" 2>/dev/null; then
-            echo "       注册: extensions.json ✓"
-        else
-            echo -e "       ${RED}Firefox 注册失败，请手动加载:${NC}"
-            echo "         about:debugging → 此 Firefox → 加载临时附加组件"
-            echo "         选择文件: $SCRIPT_DIR/manifest.json"
+        echo "       ── 注册 Firefox 扩展 ──"
+        $PYTHON "$REG_SCRIPT" 2>&1 | while IFS= read -r line; do
+            echo "       $line"
+        done
+        if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            echo "       (Firefox 正式版不支持直接安装，请参考上方提示)"
         fi
     else
         prefs_file="$config_dir/Default/Preferences"

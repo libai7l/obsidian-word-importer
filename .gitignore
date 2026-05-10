@@ -1,6 +1,9 @@
 # Chrome extension signing key
 key.pem
 
+# Firefox XPI build
+*.xpi
+
 # Test files
 /tmp/
 

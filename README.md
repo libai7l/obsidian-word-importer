@@ -36,7 +36,13 @@ chmod +x install.sh && ./install.sh
 ./install.sh all      # 全部强制安装
 ```
 
-Chromium 系浏览器重启即可使用。Firefox 需额外操作：`about:debugging` → 此 Firefox → 加载临时附加组件 → 选择 `manifest.json`。
+Chromium 系（Chrome/Edge）重启即可使用。
+Firefox 根据版本有所不同：
+
+| Firefox 版本 | 安装方式 |
+|-------------|---------|
+| Developer Edition / Nightly / ESR | `./install.sh` 一键安装 |
+| 正式版（需 Mozilla 签名） | `./install.sh` 会生成 XPI 并提示提交到 AMO 签名，或使用 `about:debugging` 临时加载 |
 
 ### 配置（可选）
 
@@ -122,7 +128,8 @@ Chromium 系浏览器重启即可使用。Firefox 需额外操作：`about:debug
 | Google Chrome | ✓ | ✓ | ✓ |
 | Microsoft Edge | ✓ | ✓ | ✓ |
 | Chromium | ✓ | ✓ | ✓ |
-| Mozilla Firefox | 手动加载扩展 | ✓ | ✓ |
+| Firefox Dev Edition | ✓ | ✓ | ✓ |
+| Firefox 正式版 | 需签名或临时加载 | ✓ | ✓ |
 
 ## 技术架构
 
