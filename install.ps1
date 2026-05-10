@@ -1,4 +1,4 @@
-# ═══════════════════════════════════════════════════════════════════════
+﻿# ═══════════════════════════════════════════════════════════════════════
 # Obsidian Word Importer - Windows 一键安装脚本 (Google Chrome)
 # 用法:
 #   powershell -ExecutionPolicy Bypass -File install.ps1

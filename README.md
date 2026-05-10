@@ -19,6 +19,11 @@
 
 ## 下载安装
 
+**前提要求：**
+- 已安装 [Node.js](https://nodejs.org/)（用于 Native Host 运行翻译和写入文件）
+- 已安装 [Google Chrome](https://www.google.com/chrome/) 浏览器
+- 已安装 [Obsidian](https://obsidian.md/)（需要本地 Vault 作为词库存储位置）
+
 安装分为两步：
 
 1. **运行 install 脚本** → 注册 Native Messaging Host（操作系统层面）
@@ -45,6 +50,7 @@ chmod +x install.sh && ./install.sh
 **前提要求：**
 - 已安装 Node.js（[下载地址](https://nodejs.org/)）
 - 已安装 Google Chrome 浏览器
+- 已安装 Obsidian
 
 ```powershell
 git clone https://github.com/libai7l/obsidian-word-importer.git
