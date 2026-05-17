@@ -1,11 +1,30 @@
 (function () {
+  const MAX_INPUT_CHARS = 800;
   let lastCopiedText = "";
   let lastCopyTime = 0;
 
+  function normalizeInput(text) {
+    let t = String(text || "")
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, "\"")
+      .replace(/[\u2013\u2014]/g, "-")
+      .replace(/\u2026/g, "...")
+      .replace(/[\u200B\u200C\u200D\uFEFF\u00AD]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    t = t.replace(/^["']+|["']+$/g, "").trim();
+    if (/^[a-zA-Z][a-zA-Z'-]{1,79}[.,;:!?]+$/.test(t)) {
+      t = t.replace(/[.,;:!?]+$/, "");
+    }
+    return t;
+  }
+
   function isValidInput(text) {
-    // Strip trailing punctuation that might get included in selection
-    const t = text.replace(/[.,;:!?。，；：！？、""'']+$/, "").trim();
-    return /^[a-zA-Z][a-zA-Z\s\-]{1,79}$/.test(t) && t.length >= 2;
+    const t = normalizeInput(text);
+    if (t.length < 2 || t.length > MAX_INPUT_CHARS) return false;
+    if (!/[a-zA-Z]/.test(t)) return false;
+    if (/[^\x20-\x7E]/.test(t)) return false;
+    return /^[a-zA-Z0-9"'(]/.test(t);
   }
 
   // ── Extract translation from Immersive Translate full-page bilingual mode ──
@@ -51,7 +70,7 @@
         const fonts = sibling.querySelectorAll("[class*='immersive-translate-target-inner'], [class*='immersive-translate-target']");
         for (const f of fonts) {
           const text = f.textContent.trim();
-          if (hasChinese(text)) return text;
+          if (isValidTranslation(text)) return text;
         }
         // Also check if the sibling ITSELF contains Chinese (e.g., a <p> with Chinese text)
         if (hasChinese(sibling.textContent) && sibling.textContent.trim().length < 1000 && isValidTranslation(sibling.textContent.trim())) {
@@ -115,7 +134,17 @@
   }
 
   // UI keywords that are NOT valid translations
-  const UI_NOISE = /^(主题|设置|登录|注册|关于|搜索|首页|返回|更多|评论|分享|点赞|收藏|下载|上传|提交|取消|确定|保存|编辑|删除|新建|打开|关闭|菜单|导航|个人|退出|语言|帮助|用户|密码|账号|邮箱|手机|验证码|提交|重置)$/;
+  const UI_NOISE_WORDS = [
+    '主题', '设置', '登录', '注册', '关于', '搜索', '首页', '返回', '更多',
+    '评论', '评论区', '发表评论', '回复', '分享', '点赞', '收藏', '下载', '上传',
+    '提交', '取消', '确定', '保存', '编辑', '删除', '新建', '打开', '关闭',
+    '菜单', '导航', '个人', '退出', '语言', '帮助', '用户', '密码', '账号',
+    '邮箱', '手机', '验证码', '重置', '作者', '时间', '日期', '上一页', '下一页',
+    '注释', '说明', '注意', '提示', '备注', '翻译',
+  ];
+
+  const UI_NOISE = new RegExp(`^(${UI_NOISE_WORDS.join('|')})\\s*[:：]?$`);
+  const UI_NOISE_PREFIX = new RegExp(`^(${UI_NOISE_WORDS.join('|')})\\s*[:：]\\s*`, 'u');
 
   // Garbage patterns: cookie banners, privacy notices, navigation UI, etc.
   const GARBAGE_PATTERNS = [
@@ -158,11 +187,14 @@
 
   function isValidTranslation(text) {
     const t = text.trim();
-    // Must be at least 8 Chinese+punctuation chars
+    const compact = t.replace(/[\s:：,，.。;；!！?？]+$/g, "");
+    // Must contain real Chinese content, while allowing short word translations.
     const cnChars = t.replace(/[\s\d\w\p{P}]/gu, "");
-    if (cnChars.length < 4) return false;
+    if (cnChars.length < 2) return false;
     // Must not be a UI keyword
-    if (UI_NOISE.test(t)) return false;
+    if (UI_NOISE.test(t) || UI_NOISE.test(compact)) return false;
+    // Must not start with a UI keyword prefix (e.g., "评论：实验性的")
+    if (UI_NOISE_PREFIX.test(t)) return false;
     // Must contain at least some actual semantic content (not just single char repeated)
     if (new Set(cnChars).size < 2) return false;
     // Reject garbage (cookie banners, privacy notices, etc.)
@@ -196,8 +228,7 @@
 
     if (!isValidInput(text)) return;
 
-    // Clean trailing punctuation for the word sent to host
-    const word = text.replace(/[.,;:!?。，；：！？、""'']+$/, "").trim().toLowerCase();
+    const word = normalizeInput(text);
 
     const now = Date.now();
     if (word === lastCopiedText && now - lastCopyTime < 1000) return;
@@ -224,7 +255,7 @@
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === "GET_SELECTED_TEXT") {
       const text = document.getSelection().toString().trim();
-      sendResponse({ text: isValidInput(text) ? text.toLowerCase() : "" });
+      sendResponse({ text: isValidInput(text) ? normalizeInput(text) : "" });
     }
   });
 })();

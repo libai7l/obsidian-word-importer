@@ -2,6 +2,31 @@ const CACHE_DB_NAME = "WordImporterCache";
 const CACHE_STORE = "words";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const NATIVE_HOST_NAME = "com.obsidian.wordimporter";
+const MAX_NOTIFICATION_TITLE = 80;
+
+function normalizeInput(text) {
+  let t = String(text || "")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, "\"")
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/[\u200B\u200C\u200D\uFEFF\u00AD]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  t = t.replace(/^["']+|["']+$/g, "").trim();
+  if (/^[a-zA-Z][a-zA-Z'-]{1,79}[.,;:!?]+$/.test(t)) {
+    t = t.replace(/[.,;:!?]+$/, "");
+  }
+  return t;
+}
+
+function isValidInput(text) {
+  const t = normalizeInput(text);
+  if (t.length < 2 || t.length > 800) return false;
+  if (!/[a-zA-Z]/.test(t)) return false;
+  if (/[^\x20-\x7E]/.test(t)) return false;
+  return /^[a-zA-Z0-9"'(]/.test(t);
+}
 
 function openCache() {
   return new Promise((resolve, reject) => {
@@ -78,25 +103,26 @@ function showNotification(title, message) {
 }
 
 function buildTitle(word, pronunciation) {
-  return pronunciation ? `${word} ${pronunciation}` : word;
+  const title = pronunciation ? `${word} ${pronunciation}` : word;
+  return title.length > MAX_NOTIFICATION_TITLE ? `${title.slice(0, MAX_NOTIFICATION_TITLE - 1)}…` : title;
 }
 
-function buildMessage(pos, meaning, etymology) {
-  const tag = pos ? `[${pos}] ${meaning}` : meaning;
-  return etymology ? `${tag}\n${etymology}` : tag;
+function buildMessage(pos, meaning) {
+  return pos ? `[${pos}] ${meaning}` : meaning;
 }
 
 async function processWord(word, pageTranslation) {
   const settings = await getSettings();
+  const cacheKey = word.toLowerCase();
 
-  if (isDebounced(word, settings.debounce_seconds)) return;
+  if (isDebounced(cacheKey, settings.debounce_seconds)) return;
 
-  const cached = await getCache(word);
+  const cached = await getCache(cacheKey);
   if (cached) {
     if (settings.notifications_enabled) {
       showNotification(
         "\u{1F4CC} 已存在: " + buildTitle(word, cached.pronunciation),
-        buildMessage(cached.pos, cached.meaning, cached.etymology)
+        buildMessage(cached.pos, cached.meaning)
       );
     }
     return;
@@ -114,22 +140,22 @@ async function processWord(word, pageTranslation) {
     }
 
     if (response.status === "ok") {
-      await setCache(word, response.pronunciation, response.pos,
+      await setCache(cacheKey, response.pronunciation, response.pos,
                      response.meaning, response.etymology);
       if (settings.notifications_enabled) {
         const suffix = response.file ? `\n写入: ${response.file}` : "";
         showNotification(
           "✅ 已收录: " + buildTitle(word, response.pronunciation),
-          buildMessage(response.pos, response.meaning, response.etymology) + suffix
+          buildMessage(response.pos, response.meaning) + suffix
         );
       }
     } else if (response.status === "exists") {
-      await setCache(word, response.pronunciation, response.pos,
+      await setCache(cacheKey, response.pronunciation, response.pos,
                      response.meaning, response.etymology);
       if (settings.notifications_enabled) {
         showNotification(
           "\u{1F4CC} 已存在: " + buildTitle(word, response.pronunciation),
-          buildMessage(response.pos, response.meaning, response.etymology)
+          buildMessage(response.pos, response.meaning)
         );
       }
     } else if (response.status === "error") {
@@ -173,9 +199,9 @@ ensureContextMenu();
 
 chrome.contextMenus.onClicked.addListener((info, _tab) => {
   if (info.menuItemId === "add-to-obsidian" && info.selectionText) {
-    const word = info.selectionText.trim();
-    if (word && /^[a-zA-Z][a-zA-Z\s\-]{1,79}$/.test(word)) {
-      processWord(word.toLowerCase());
+    const word = normalizeInput(info.selectionText);
+    if (isValidInput(word)) {
+      processWord(word);
     }
   }
 });

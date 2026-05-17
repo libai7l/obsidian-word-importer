@@ -13,7 +13,7 @@ $HostJson  = Join-Path $HostDir "host.json"
 
 Write-Host ""
 Write-Host "======================================================================" -ForegroundColor Cyan
-Write-Host "   Obsidian Word Importer v3.0.0 - Windows 一键安装" -ForegroundColor Cyan
+Write-Host "   Obsidian Word Importer v3.0.1 - Windows 一键安装" -ForegroundColor Cyan
 Write-Host "======================================================================" -ForegroundColor Cyan
 Write-Host ""
 

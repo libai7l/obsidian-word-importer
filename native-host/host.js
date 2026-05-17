@@ -5,9 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const VERSION = '3.0.0';
+const VERSION = '3.0.2';
 const DEFAULT_TARGET_FILE = '论文单词.md';
 const MAX_ENTRIES_PER_FILE = 100;
+const MAX_INPUT_CHARS = 800;
 
 // ═══════════════════════════════════════════════════════════════════════
 // Native Messaging protocol
@@ -51,9 +52,9 @@ function sendMessage(data) {
 function httpGet(url) {
   return new Promise((resolve) => {
     const req = https.get(url, {
-      timeout: 5000,
+      timeout: 10000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 ObsidianWordImporter/3.0.0',
+        'User-Agent': 'Mozilla/5.0 ObsidianWordImporter/3.0.2',
         'Accept': 'application/json,text/plain,*/*',
       },
     }, (res) => {
@@ -122,7 +123,7 @@ async function queryDictionaryApi(word) {
     for (const m of entry.meanings || []) {
       if (m.partOfSpeech) posSet.add(formatPartOfSpeech(m.partOfSpeech));
     }
-    const pos = posSet.size > 0 ? [...posSet].join('/') : '';
+    const pos = normalizePartOfSpeech([...posSet].join('/'));
 
     return { phonetic, pos };
   } catch (_) {}
@@ -146,6 +147,16 @@ function formatPartOfSpeech(part) {
   const key = String(part || '').trim().toLowerCase();
   if (!key) return '';
   return map[key] || (key.endsWith('.') ? key : `${key}.`);
+}
+
+function normalizePartOfSpeech(pos) {
+  const raw = String(pos || '').trim();
+  if (!raw) return '';
+  const parts = raw
+    .split(/[\/,;]+/)
+    .map(p => formatPartOfSpeech(p.replace(/\.$/, '').trim()))
+    .filter(Boolean);
+  return [...new Set(parts)].join('/');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -517,10 +528,11 @@ function buildEntryBlock(word, pronunciation, pos, meaning, etymology) {
   } else {
     lines.push(`### ${word}`);
   }
-  const tag = pos ? `[${pos}] ${meaning}` : meaning;
+  const normalizedPos = normalizePartOfSpeech(pos);
+  const tag = normalizedPos ? `[${normalizedPos}] ${meaning}` : meaning;
   lines.push(tag);
   if (etymology) {
-    lines.push(`← *${etymology}*`);
+    lines.push(`> ${etymology}`);
   }
   return lines.join('\n');
 }
@@ -611,8 +623,75 @@ function writeToObsidian(vaultPath, targetFile, word, pronunciation, pos, meanin
 // Message handler
 // ═══════════════════════════════════════════════════════════════════════
 
-function isValidWord(text) {
-  return /^[a-zA-Z][a-zA-Z\s\-]{1,79}$/.test(text.trim());
+function normalizeInput(text) {
+  let t = String(text || '')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\u2026/g, '...')
+    .replace(/[\u200B\u200C\u200D\uFEFF\u00AD]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  t = t.replace(/^["']+|["']+$/g, '').trim();
+  if (/^[a-zA-Z][a-zA-Z'-]{1,79}[.,;:!?]+$/.test(t)) {
+    t = t.replace(/[.,;:!?]+$/, '');
+  }
+  return t;
+}
+
+function isValidInput(text) {
+  const t = normalizeInput(text);
+  if (t.length < 2 || t.length > MAX_INPUT_CHARS) return false;
+  if (!/[a-zA-Z]/.test(t)) return false;
+  if (/[^\x20-\x7E]/.test(t)) return false;
+  return /^[a-zA-Z0-9"'(]/.test(t);
+}
+
+function isDictionaryCandidate(text) {
+  return /^[a-zA-Z][a-zA-Z'-]{1,79}$/.test(text);
+}
+
+const TRANSLATION_UI_NOISE_WORDS = [
+  '主题', '设置', '登录', '注册', '关于', '搜索', '首页', '返回', '更多',
+  '评论', '评论区', '发表评论', '回复', '分享', '点赞', '收藏', '下载', '上传',
+  '提交', '取消', '确定', '保存', '编辑', '删除', '新建', '打开', '关闭',
+  '菜单', '导航', '个人', '退出', '语言', '帮助', '用户', '密码', '账号',
+  '邮箱', '手机', '验证码', '重置', '作者', '时间', '日期', '上一页', '下一页',
+  '注释', '说明', '注意', '提示', '备注', '翻译',
+];
+
+const TRANSLATION_UI_NOISE = new RegExp(
+  `^(${TRANSLATION_UI_NOISE_WORDS.join('|')})\\s*[:：]?$`
+);
+
+const UI_PREFIX_PATTERN = new RegExp(
+  `^(${TRANSLATION_UI_NOISE_WORDS.join('|')})\\s*[:：]\\s*`,
+  'u'
+);
+
+function sanitizePageTranslation(text) {
+  let t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+
+  // Strip UI noise prefix (e.g., "评论：实验性的" → "实验性的")
+  let stripped = t;
+  for (let i = 0; i < 3; i++) {
+    const prev = stripped;
+    stripped = stripped.replace(UI_PREFIX_PATTERN, '');
+    if (stripped === prev) break;
+  }
+
+  const compact = t.replace(/[\s:：,，.。;；!！?？]+$/g, '');
+  const cnChars = stripped.replace(/[\s\d\w\p{P}]/gu, '');
+  if (cnChars.length < 2) return '';
+
+  // If stripping removed everything meaningful, reject
+  if (TRANSLATION_UI_NOISE.test(stripped)) return '';
+
+  // Reject if the original was pure UI noise
+  if (TRANSLATION_UI_NOISE.test(t) || TRANSLATION_UI_NOISE.test(compact)) return '';
+
+  return stripped;
 }
 
 async function handleMessage(msg) {
@@ -625,9 +704,9 @@ async function handleMessage(msg) {
     return { status: 'ok', message };
   }
 
-  const word = (msg.word || '').trim().toLowerCase();
-  if (!isValidWord(word)) {
-    return { status: 'error', message: '请输入有效的英文单词或词组' };
+  const word = normalizeInput(msg.word);
+  if (!isValidInput(word)) {
+    return { status: 'error', message: '请输入有效的英文单词、词组或句子' };
   }
 
   const settings = msg.settings || {};
@@ -643,7 +722,16 @@ async function handleMessage(msg) {
   const apiChoice = settings.dictionary_api || 'google';
 
   // Step 1: Translation (page → Google → Youdao)
-  let meaning = (msg.pageTranslation || '').trim();
+  let meaning = sanitizePageTranslation(msg.pageTranslation);
+
+  // Quality gate: if page translation is too short or looks like a fragment, prefer API
+  if (meaning) {
+    const meaningCn = meaning.replace(/[\s\d\w\p{P}]/gu, '');
+    if (meaningCn.length < 3 && word.length > 3) {
+      meaning = ''; // page translation too short for a longer word — suspect
+    }
+  }
+
   if (!meaning) {
     if (apiChoice === 'youdao') {
       meaning = await queryYoudao(word);
@@ -659,14 +747,16 @@ async function handleMessage(msg) {
 
   // Step 2: Pronunciation + POS (Free Dictionary API)
   let pronunciation = '', pos = '';
-  const dict = await queryDictionaryApi(word);
-  if (dict) {
-    pronunciation = dict.phonetic;
-    pos = dict.pos;
+  if (isDictionaryCandidate(word)) {
+    const dict = await queryDictionaryApi(word.toLowerCase());
+    if (dict) {
+      pronunciation = dict.phonetic;
+      pos = dict.pos;
+    }
   }
 
   // Step 3: Etymology (rule-based morpheme analysis)
-  const etymology = analyzeWordStructure(word);
+  const etymology = isDictionaryCandidate(word) ? analyzeWordStructure(word.toLowerCase()) : '';
 
   return writeToObsidian(vaultPath, targetFile, word, pronunciation, pos, meaning, etymology);
 }
@@ -701,4 +791,8 @@ module.exports = {
   resolveVaultFile,
   parseEntryBlock,
   rotatedPath,
+  normalizeInput,
+  isValidInput,
+  sanitizePageTranslation,
+  normalizePartOfSpeech,
 };

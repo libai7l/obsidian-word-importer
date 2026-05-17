@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Obsidian Word Importer",
-  "version": "3.0.0",
+  "version": "3.0.2",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwFQhPtc7DzMMp1rvH9t7Fd48L6pSbqLZ1xCBOxS3gCIimCmh8cOhV9BRIYwWL5Ji7AaIOFOUDIekGDxWGfl72fVsNApsi6ecAHkDnRK1HgcOmwIvB8HROb0zVQHUM4UxldBvcZQD4a72J+msWcRzQxt4xyddTCFrRSzrNqaSs/Y07oRN7uyM6X0WztqLOC9ljd7wcaOZ/zSQsVRS8VHhK4lalIm+itQ9A9uKmc7p7OIGoyQ3vj663zKr4Lb4nydexAvCC1qa2gRs+ZhH7oZub+MvquAhyr37WbN+OnsGvSI7xtrru2gnXWFclvlOheN+xyOjAhggqfWbqR3w1vFFVQIDAQAB",
   "description": "选中英文单词 Ctrl+C → 自动收录到 Obsidian 词库，翻译+发音+词根词缀",
 
