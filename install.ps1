@@ -6,7 +6,6 @@
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $HostDir   = Join-Path $ScriptDir "native-host"
-$HostBat   = Join-Path $HostDir "host.bat"
 $HostJs    = Join-Path $HostDir "host.js"
 $ExtIdJs   = Join-Path $HostDir "extid.js"
 $VerifyJs  = Join-Path $HostDir "verify.js"
@@ -14,7 +13,7 @@ $HostJson  = Join-Path $HostDir "host.json"
 
 Write-Host ""
 Write-Host "======================================================================" -ForegroundColor Cyan
-Write-Host "   Obsidian Word Importer v3.0 - Windows 一键安装" -ForegroundColor Cyan
+Write-Host "   Obsidian Word Importer v3.0.0 - Windows 一键安装" -ForegroundColor Cyan
 Write-Host "======================================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -44,15 +43,10 @@ if (-not $Node) {
     exit 1
 }
 
-if (-not (Test-Path $HostBat)) {
-    Write-Host "错误: 未找到 native-host\host.bat" -ForegroundColor Red
+if (-not (Test-Path $HostJs)) {
+    Write-Host "错误: 未找到 native-host\host.js" -ForegroundColor Red
     exit 1
 }
-
-# 使用绝对路径重写 host.bat，Chrome 进程环境可能没有完整 PATH
-$HostBatContent = '@echo off' + "`r`n" + '"' + $NodePath + '" "%~dp0host.js" %*'
-Set-Content -Path $HostBat -Value $HostBatContent -Encoding ASCII
-Write-Host "       host.bat -> $NodePath" -ForegroundColor Gray
 
 # 确认 Chrome 已安装
 $ChromeConfigDir = "$env:LOCALAPPDATA\Google\Chrome"
@@ -81,16 +75,20 @@ Write-Host "       ID: $ExtId"
 # ═══════════════════════════════════════════════════════════════════════
 Write-Host "[3/5] 安装 Native Host 清单..." -ForegroundColor Yellow
 
-$hostJsonContent = Get-Content $HostJson -Raw -Encoding UTF8
-$hostJsonContent = $hostJsonContent.Replace("HOST_NODE_PATH_PLACEHOLDER", $HostBat.Replace("\", "\\"))
-$hostJsonContent = $hostJsonContent.Replace("EXTENSION_ID_PLACEHOLDER", $ExtId)
-
 $hostManifestDir = Join-Path $ChromeConfigDir "NativeMessagingHosts"
 if (-not (Test-Path $hostManifestDir)) {
     New-Item -ItemType Directory -Path $hostManifestDir -Force | Out-Null
 }
 
+$launcherFile = Join-Path $hostManifestDir "com.obsidian.wordimporter.bat"
+$launcherContent = '@echo off' + "`r`n" + '"' + $NodePath + '" "' + $HostJs + '" %*'
+Set-Content -Path $launcherFile -Value $launcherContent -Encoding ASCII
+Write-Host "       启动器: $launcherFile" -ForegroundColor Green
+
 $manifestFile = Join-Path $hostManifestDir "com.obsidian.wordimporter.json"
+$hostJsonContent = Get-Content $HostJson -Raw -Encoding UTF8
+$hostJsonContent = $hostJsonContent.Replace("HOST_NODE_PATH_PLACEHOLDER", $launcherFile.Replace("\", "\\"))
+$hostJsonContent = $hostJsonContent.Replace("EXTENSION_ID_PLACEHOLDER", $ExtId)
 Set-Content -Path $manifestFile -Value $hostJsonContent -Encoding UTF8
 Write-Host "       清单: $manifestFile" -ForegroundColor Green
 
@@ -106,7 +104,7 @@ Write-Host "       注册表: HKCU\...\NativeMessagingHosts\com.obsidian.wordimp
 Write-Host ""
 Write-Host "[4/5] 验证 Native Host..." -ForegroundColor Yellow
 
-$verifyResult = & $Node $VerifyJs $HostBat 2>&1
+$verifyResult = & $Node $VerifyJs $launcherFile 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "       警告: Native host 验证失败" -ForegroundColor Red
     Write-Host "       $verifyResult" -ForegroundColor Red

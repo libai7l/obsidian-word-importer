@@ -13,7 +13,7 @@ let h;
 if (keyB64) {
     h = crypto.createHash('sha256').update(Buffer.from(keyB64, 'base64')).digest();
 } else {
-    h = crypto.createHash('sha256').update(scriptDir.toLowerCase()).digest();
+    h = crypto.createHash('sha256').update(path.join(scriptDir, '..').toLowerCase()).digest();
 }
 
 const chars = [];

@@ -89,13 +89,6 @@ function buildMessage(pos, meaning, etymology) {
 async function processWord(word, pageTranslation) {
   const settings = await getSettings();
 
-  if (!settings.vault_path) {
-    if (settings.notifications_enabled) {
-      showNotification("请先配置 Vault 路径", "点击扩展图标 → 设置 Obsidian Vault 路径");
-    }
-    return;
-  }
-
   if (isDebounced(word, settings.debounce_seconds)) return;
 
   const cached = await getCache(word);
@@ -124,9 +117,10 @@ async function processWord(word, pageTranslation) {
       await setCache(word, response.pronunciation, response.pos,
                      response.meaning, response.etymology);
       if (settings.notifications_enabled) {
+        const suffix = response.file ? `\n写入: ${response.file}` : "";
         showNotification(
           "✅ 已收录: " + buildTitle(word, response.pronunciation),
-          buildMessage(response.pos, response.meaning, response.etymology)
+          buildMessage(response.pos, response.meaning, response.etymology) + suffix
         );
       }
     } else if (response.status === "exists") {
@@ -152,7 +146,10 @@ async function processWord(word, pageTranslation) {
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "WORD_COPIED" && msg.word) {
-    processWord(msg.word, msg.pageTranslation);
+    processWord(msg.word, msg.pageTranslation)
+      .then(() => sendResponse({ status: "ok" }))
+      .catch((err) => sendResponse({ status: "error", message: err.message }));
+    return true;
   }
   if (msg.type === "GET_SETTINGS") {
     getSettings().then(sendResponse);

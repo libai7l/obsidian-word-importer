@@ -8,7 +8,11 @@ if (!hostBat) {
     process.exit(1);
 }
 
-const proc = childProcess.spawn(hostBat, [], { stdio: ['pipe', 'pipe', 'pipe'] });
+const proc = childProcess.spawn(hostBat, [], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    shell: process.platform === 'win32',
+    windowsHide: true,
+});
 
 const msg = JSON.stringify({ action: 'test' });
 const lenBuf = Buffer.alloc(4);
@@ -22,6 +26,11 @@ const chunks = [];
 const errChunks = [];
 proc.stdout.on('data', (c) => chunks.push(c));
 proc.stderr.on('data', (c) => errChunks.push(c));
+
+proc.on('error', (err) => {
+    console.log('FAIL: ' + err.message);
+    process.exit(1);
+});
 
 proc.on('close', () => {
     const stdout = Buffer.concat(chunks);

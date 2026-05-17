@@ -12,7 +12,7 @@
   function extractImmersiveTranslate() {
     // Immersive Translate uses these classes in all modes
     const classPatterns = [
-      "font.immersive-translate-target-inner",
+      "[class*='immersive-translate-target-inner']",
       "[class*='immersive-translate-target']",
       "[class*='immersive-translate']",
     ];
@@ -48,7 +48,7 @@
       // Look for the NEXT sibling block containing Chinese translation
       let sibling = englishBlock.nextElementSibling;
       for (let i = 0; i < 5 && sibling; i++) {
-        const fonts = sibling.querySelectorAll("font.immersive-translate-target-inner, [class*='immersive-translate-target']");
+        const fonts = sibling.querySelectorAll("[class*='immersive-translate-target-inner'], [class*='immersive-translate-target']");
         for (const f of fonts) {
           const text = f.textContent.trim();
           if (hasChinese(text)) return text;
@@ -82,8 +82,11 @@
     const skipTags = /^(NAV|HEADER|FOOTER|ASIDE|MENU|BUTTON|INPUT|SELECT|TEXTAREA|LABEL)$/;
 
     let parent = node;
-    for (let i = 0; i < 8 && parent; i++) {
-      const all = parent.querySelectorAll("p, div, span, font, li");
+    const seen = new Set();
+    for (let i = 0; i < 5 && parent; i++) {
+      if (seen.has(parent)) break;
+      seen.add(parent);
+      const all = Array.from(parent.querySelectorAll("p, div, span, font, li")).slice(0, 300);
       for (const el of all) {
         if (skipTags.test(el.tagName) || el.closest("nav, header, footer, aside, [role='navigation'], [role='banner']")) continue;
         const text = el.textContent.trim();
@@ -92,8 +95,8 @@
       parent = parent.parentElement;
     }
 
-    // Broad scan: skip UI areas
-    const all = document.querySelectorAll("p, div, span, font");
+    // Bounded broad scan: skip UI areas
+    const all = Array.from(document.querySelectorAll("p, div, span, font")).slice(0, 1000);
     for (const el of all) {
       if (skipTags.test(el.tagName) || el.closest("nav, header, footer, aside, [role='navigation'], [role='banner']")) continue;
       const text = el.textContent.trim();

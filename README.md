@@ -2,6 +2,18 @@
 
 选中英文单词/词组 → Ctrl+C → 自动收录到 Obsidian 词库（Google Chrome）。
 
+当前版本：**v3.0.0**
+
+## v3.0.0 更新
+
+- Native Host 切换为 Node.js，无需 Python 运行环境
+- 修复未配置 Vault 路径时后台提前拦截，导致自动检测 Vault 不生效的问题
+- 修复词组去重只识别第一个单词的问题
+- 修复目标文件在子目录中轮转时，新文件被写到 Vault 根目录的问题
+- 改进沉浸式翻译 DOM 提取，减少误抓和大页面扫描开销
+- Windows 安装脚本不再改写仓库内的 `native-host/host.bat`
+- 精简 Chrome Manifest 权限，移除未使用权限
+
 ## 功能
 
 - **一键收录**: 在任意网页选中英文单词或词组，Ctrl+C 即自动查询并写入 Obsidian

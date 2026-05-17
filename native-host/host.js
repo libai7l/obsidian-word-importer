@@ -5,6 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+const VERSION = '3.0.0';
+const DEFAULT_TARGET_FILE = '论文单词.md';
+const MAX_ENTRIES_PER_FILE = 100;
+
 // ═══════════════════════════════════════════════════════════════════════
 // Native Messaging protocol
 // ═══════════════════════════════════════════════════════════════════════
@@ -46,11 +50,25 @@ function sendMessage(data) {
 
 function httpGet(url) {
   return new Promise((resolve) => {
-    https.get(url, { timeout: 5000 }, (res) => {
+    const req = https.get(url, {
+      timeout: 5000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 ObsidianWordImporter/3.0.0',
+        'Accept': 'application/json,text/plain,*/*',
+      },
+    }, (res) => {
+      if (res.statusCode && res.statusCode >= 400) {
+        res.resume();
+        resolve(null);
+        return;
+      }
       let data = '';
+      res.setEncoding('utf8');
       res.on('data', c => data += c);
       res.on('end', () => resolve(data));
-    }).on('error', () => resolve(null));
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => resolve(null));
   });
 }
 
@@ -102,13 +120,32 @@ async function queryDictionaryApi(word) {
     // Collect all parts of speech
     const posSet = new Set();
     for (const m of entry.meanings || []) {
-      if (m.partOfSpeech) posSet.add(m.partOfSpeech);
+      if (m.partOfSpeech) posSet.add(formatPartOfSpeech(m.partOfSpeech));
     }
-    const pos = posSet.size > 0 ? [...posSet].join('/') + '.' : '';
+    const pos = posSet.size > 0 ? [...posSet].join('/') : '';
 
     return { phonetic, pos };
   } catch (_) {}
   return null;
+}
+
+function formatPartOfSpeech(part) {
+  const map = {
+    noun: 'n.',
+    verb: 'v.',
+    adjective: 'adj.',
+    adverb: 'adv.',
+    pronoun: 'pron.',
+    preposition: 'prep.',
+    conjunction: 'conj.',
+    interjection: 'interj.',
+    determiner: 'det.',
+    numeral: 'num.',
+    article: 'art.',
+  };
+  const key = String(part || '').trim().toLowerCase();
+  if (!key) return '';
+  return map[key] || (key.endsWith('.') ? key : `${key}.`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -427,21 +464,50 @@ function detectObsidianVault() {
   return candidates[0] || null;
 }
 
-function readEntries(filepath) {
-  // Returns [{word, meaning}] — word is extracted, meaning is the full block including ### header
-  if (!fs.existsSync(filepath)) return [];
+function parseEntryBlock(block) {
+  const trimmed = block.trim();
+  const nl = trimmed.indexOf('\n');
+  const rawHeader = nl > 0 ? trimmed.substring(4, nl).trim() : trimmed.substring(4).trim();
+  const word = rawHeader
+    .replace(/\s+(?:\/[^/]+\/|\[[^\]]+\])\s*$/, '')
+    .trim()
+    .toLowerCase();
+  return { word, meaning: trimmed };
+}
+
+function readWordFile(filepath) {
+  if (!fs.existsSync(filepath)) return { header: '# 论文词汇表', entries: [] };
   const content = fs.readFileSync(filepath, 'utf-8');
+  const normalized = content.replace(/\r\n/g, '\n').trimEnd();
+  if (!normalized) return { header: '# 论文词汇表', entries: [] };
+
+  let header = '# 论文词汇表';
   const entries = [];
-  const parts = content.split(/\n(?=### )/);
+  const parts = normalized.split(/\n(?=### )/);
+
   for (const part of parts) {
     const trimmed = part.trim();
-    if (!trimmed.startsWith('### ')) continue;
-    const nl = trimmed.indexOf('\n');
-    const header = nl > 0 ? trimmed.substring(4, nl).trim() : trimmed.substring(4).trim();
-    const word = header.split(/[\s/]/)[0].toLowerCase();
-    entries.push({ word, meaning: trimmed });
+    if (!trimmed) continue;
+    if (trimmed.startsWith('### ')) {
+      entries.push(parseEntryBlock(trimmed));
+      continue;
+    }
+
+    const entryStart = trimmed.indexOf('### ');
+    if (entryStart >= 0) {
+      const fileHeader = trimmed.slice(0, entryStart).trim();
+      if (fileHeader) header = fileHeader;
+      entries.push(parseEntryBlock(trimmed.slice(entryStart).trim()));
+    } else {
+      header = trimmed;
+    }
   }
-  return entries;
+  return { header, entries };
+}
+
+function writeWordFile(filepath, header, entries) {
+  const body = entries.map(e => e.meaning).join('\n\n');
+  fs.writeFileSync(filepath, `${header.trim()}\n\n${body}${body ? '\n' : ''}`, 'utf-8');
 }
 
 function buildEntryBlock(word, pronunciation, pos, meaning, etymology) {
@@ -459,47 +525,85 @@ function buildEntryBlock(word, pronunciation, pos, meaning, etymology) {
   return lines.join('\n');
 }
 
+function normalizeTargetFile(targetFile) {
+  const trimmed = String(targetFile || DEFAULT_TARGET_FILE).trim() || DEFAULT_TARGET_FILE;
+  return path.extname(trimmed) ? trimmed : `${trimmed}.md`;
+}
+
+function resolveVaultFile(vaultPath, targetFile) {
+  const vaultRoot = path.resolve(vaultPath);
+  const normalizedTarget = normalizeTargetFile(targetFile);
+  if (path.isAbsolute(normalizedTarget)) {
+    throw new Error('目标文件必须是相对于 Vault 的路径');
+  }
+
+  const targetPath = path.resolve(vaultRoot, normalizedTarget);
+  const cmpVault = os.platform() === 'win32' ? vaultRoot.toLowerCase() : vaultRoot;
+  const cmpTarget = os.platform() === 'win32' ? targetPath.toLowerCase() : targetPath;
+  if (cmpTarget !== cmpVault && !cmpTarget.startsWith(cmpVault + path.sep)) {
+    throw new Error('目标文件不能位于 Vault 路径之外');
+  }
+  return { vaultRoot, targetPath, normalizedTarget };
+}
+
+function rotatedPath(targetPath, index) {
+  const dir = path.dirname(targetPath);
+  const ext = path.extname(targetPath) || '.md';
+  const baseName = path.basename(targetPath, ext);
+  return path.join(dir, `${baseName}${index}${ext}`);
+}
+
+function toVaultRelativePath(vaultRoot, filePath) {
+  return path.relative(vaultRoot, filePath).split(path.sep).join('/');
+}
+
+function existingManagedFiles(targetPath) {
+  const files = [];
+  if (fs.existsSync(targetPath)) files.push(targetPath);
+  for (let i = 1; i < 10000; i++) {
+    const p = rotatedPath(targetPath, i);
+    if (!fs.existsSync(p)) break;
+    files.push(p);
+  }
+  return files;
+}
+
+function findActiveFile(targetPath) {
+  let parsed = readWordFile(targetPath);
+  if (parsed.entries.length < MAX_ENTRIES_PER_FILE) {
+    return { filePath: targetPath, parsed };
+  }
+
+  for (let i = 1; i < 10000; i++) {
+    const filePath = rotatedPath(targetPath, i);
+    parsed = readWordFile(filePath);
+    if (parsed.entries.length < MAX_ENTRIES_PER_FILE) {
+      return { filePath, parsed };
+    }
+  }
+  throw new Error('词库轮转文件过多，请检查目标目录');
+}
+
 function writeToObsidian(vaultPath, targetFile, word, pronunciation, pos, meaning, etymology) {
-  const targetDir = path.dirname(path.join(vaultPath, targetFile));
-  fs.mkdirSync(targetDir, { recursive: true });
+  const { vaultRoot, targetPath, normalizedTarget } = resolveVaultFile(vaultPath, targetFile);
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
 
-  const baseName = path.basename(targetFile, '.md');
-  const ext = '.md';
-
-  let filePath = path.join(vaultPath, targetFile);
-  let entries = readEntries(filePath);
-
-  if (entries.length >= 100) {
-    let n = 1;
-    while (true) {
-      const numPath = path.join(vaultPath, `${baseName}${n}${ext}`);
-      if (fs.existsSync(numPath)) {
-        entries = readEntries(numPath);
-        if (entries.length < 100) { filePath = numPath; break; }
-      } else {
-        filePath = numPath; entries = []; break;
-      }
-      n++;
+  const wanted = word.toLowerCase();
+  for (const file of existingManagedFiles(targetPath)) {
+    const parsed = readWordFile(file);
+    if (parsed.entries.some(e => e.word === wanted)) {
+      return { status: 'exists', word, pronunciation, pos, meaning, etymology, file: toVaultRelativePath(vaultRoot, file) };
     }
   }
 
-  if (entries.some(e => e.word === word.toLowerCase())) {
-    return { status: 'exists', word, pronunciation, pos, meaning, etymology };
-  }
+  const { filePath, parsed } = findActiveFile(targetPath);
 
   const block = buildEntryBlock(word, pronunciation, pos, meaning, etymology);
-  entries.push({ word: word.toLowerCase(), meaning: block });
-  entries.sort((a, b) => a.word.localeCompare(b.word));
+  parsed.entries.push({ word: wanted, meaning: block });
+  parsed.entries.sort((a, b) => a.word.localeCompare(b.word));
+  writeWordFile(filePath, parsed.header, parsed.entries);
 
-  const lines = ['# 论文词汇表\n'];
-  for (const e of entries) {
-    lines.push(`${e.meaning}\n`);
-  }
-  fs.writeFileSync(filePath, lines.join('\n'), 'utf-8');
-
-  const fullPath = path.join(vaultPath, targetFile);
-  const writtenTo = filePath === fullPath ? targetFile : path.relative(vaultPath, filePath);
-
+  const writtenTo = filePath === targetPath ? normalizedTarget.replace(/[\\/]+/g, '/') : toVaultRelativePath(vaultRoot, filePath);
   return { status: 'ok', word, pronunciation, pos, meaning, etymology, file: writtenTo };
 }
 
@@ -516,7 +620,7 @@ async function handleMessage(msg) {
 
   if (action === 'test') {
     const vault = detectObsidianVault();
-    let message = 'Native host v3.0 (Node.js) is running';
+    let message = `Native host v${VERSION} (Node.js) is running`;
     if (vault) message += `\n检测到 Vault: ${vault}`;
     return { status: 'ok', message };
   }
@@ -535,7 +639,7 @@ async function handleMessage(msg) {
     else return { status: 'error', message: '未找到 Obsidian Vault，请在插件中手动配置路径' };
   }
 
-  const targetFile = settings.target_file || '论文单词.md';
+  const targetFile = settings.target_file || DEFAULT_TARGET_FILE;
   const apiChoice = settings.dictionary_api || 'google';
 
   // Step 1: Translation (page → Google → Youdao)
@@ -586,4 +690,15 @@ async function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  handleMessage,
+  readWordFile,
+  writeToObsidian,
+  resolveVaultFile,
+  parseEntryBlock,
+  rotatedPath,
+};
